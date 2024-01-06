@@ -1,0 +1,722 @@
+---
+title: "HW 8: Linear Models with Categorical Regressors"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: false
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+---
+```{r init, include=F}
+library(data.table)
+library(tidyverse)   
+library(caret) 
+library(DataExplorer)
+library(knitr)
+library(readr)
+library(dplyr)
+library(gridExtra)
+library(scales)
+library(reshape2)
+library(forcats)
+library(MASS)
+library(stats)
+library(magrittr)
+library(purrr)
+library(GGally)
+library(tidyverse)
+library(plotly)
+library(knitr)
+library(ggthemes)
+library(highcharter)
+library(igraph)
+library(ggraph)
+library(qgraph)
+library(visNetwork)
+library(matrixStats)
+library(lubridate)
+library(corrplot)
+library(e1071)
+library(xgboost)
+library(caret)
+library(zoo)
+library(factoextra)
+library(plotly)
+library(DT)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+train <- fread("application_train.csv", na.strings=c("NA","NaN","?", "","XNA"))
+test <- fread("application_test.csv", na.strings=c("NA","NaN","?", "","XNA"),showProgress = FALSE)
+dt1 <- fread('application_train.csv', showProgress = FALSE)
+app <- read_csv("application_train.csv") %>% mutate(TARGET=as.factor(TARGET))
+```
+
+```{r}
+glimpse(train)
+
+```
+
+```{r}
+cat("application_train : (" , nrow(train) , "," , ncol(train) , ")\n")
+```
+
+```{r include=FALSE}
+colour.mapping <- c('1' = '#FFC000', '0' = '#D9D9D9')
+
+gg.theme <- list(theme_light(), scale_fill_manual(values=colour.mapping)) # This is used for all the charts
+
+short.num <- function(num) { 
+  div <- findInterval(num, c(0, 1e3, 1e6, 1e9, 1e12))
+  out <- paste0(round(num/10^(3*(div-1)), 2), c("","K","M","B","T")[div])
+  return(out)
+}
+
+clean.names <- function(df) {
+  new.names <- df %>% names %>% tolower %>% str_replace_all('_', ' ') %>% tools::toTitleCase()
+  df %<>% setNames(new.names) 
+  return(df)
+}
+
+
+add.counts.and.plot <- function(df, axis.angle=0, scales='free', reorder=T, melt=T) {
+  
+  if (melt) {df %<>% clean.names %>% melt('Target') } 
+  
+  df %<>%
+    group_by(variable, value, Target) %>%
+    summarise(Count=n()) %>%
+    mutate(Percent=Count/sum(Count))
+
+  if (reorder) {df$value %<>% reorder(-df$Count)}
+  
+  ### If angle is not 0 (so 90 degrees), it would rotate and adjust the positions of the labels
+  if (axis.angle==0) {axis.text.x <- element_text()
+  } else {axis.text.x <- element_text(angle = axis.angle, hjust=1, vjust=0.5)}
+  
+  gg.layer <- list(gg.theme,
+                   geom_bar(stat='identity'),
+                   facet_wrap('variable', nrow = 1, scales=scales),
+                   scale_y_continuous(na.value = ''),
+                   theme(axis.ticks.x=element_blank(), axis.title.x = element_blank()))
+  
+  plot.cnt <- ggplot(df, aes(value, Count  , fill=Target)) + gg.layer + 
+    scale_y_continuous(labels=short.num) + theme(axis.text.x = element_blank())
+  plot.pct <- ggplot(df, aes(value, Percent, fill=Target)) + gg.layer + 
+    scale_y_continuous(labels=percent  ) + theme(axis.text.x = axis.text.x    )
+  
+  plot <- gridExtra::grid.arrange(plot.cnt, plot.pct)
+  
+  return(plot)
+}
+
+doPlots <- function(data_in, fun, ii, ncol=3) {
+  pp <- list()
+  for (i in ii) {
+    p <- fun(data_in=data_in, i=i)
+    pp <- c(pp, list(p))
+  }
+  do.call("grid.arrange", c(pp, ncol=ncol))
+}
+```
+
+```{r include=FALSE}
+index_to_col <- function(data, Column_Name){
+          data <- cbind(newColName = rownames(data), data)
+          rownames(data) <- 1:nrow(data)
+          colnames(data)[1] <- Column_Name
+          return (data)
+        }
+```
+
+```{r include=FALSE}
+plotHist <- function(data_in, i) {
+  data <- data.frame(x=data_in[[i]])
+  p <- ggplot(data=data, aes(x=x)) + geom_histogram(bins=100, fill="#0072B2", alpha = .9) + xlab(colnames(data_in)[i]) + theme_light() + 
+    theme(axis.text.x = element_text(angle = 90, hjust =1))
+  return (p)
+}
+```
+
+```{r}
+distColumn<-function(data,column,target,primaryKey){
+
+    cols <- c('#3cba54','#f4c20d','#db3236','#4885ed') 
+   data%>%
+        select(column,target,primaryKey)->inputData
+    
+    names(inputData)[1]<-'col'
+    names(inputData)[2]<-'tar'
+    names(inputData)[3]<-'key'
+    
+    inputData%>%
+        group_by(col,tar)%>%
+        summarise(count=length(unique(key)))%>%
+        mutate(tar=as.character(tar))%>%
+        ungroup()->plotData
+    plotTitle<-paste('Plot of ',column,'vs',target,sep=' ')
+    ggplot(plotData,aes(col,count,fill=tar))+
+    geom_bar(stat='identity',colour='black')+
+    coord_flip()+
+    ggtitle(plotTitle)+
+    xlab(column)+
+    ylab('count')+
+    theme_linedraw()    
+}
+```
+
+
+
+
+```{r}
+plot_intro(train)
+
+```
+
+
+```{r}
+a=colnames(train)
+b=colSums(is.na(train))  %>% as.data.table
+
+missing_value_table=cbind(a,b)
+
+colnames(missing_value_table)=c("variables","Missing_values")
+
+missing_value_table = missing_value_table  %>% filter(Missing_values>0)  %>% 
+                        mutate("% of Total Values" = round(100 * (Missing_values / nrow(train)),1))  %>% 
+                        arrange(desc(Missing_values))
+
+cat("Your selected dataframe has" , ncol(train) , " columns.\n")
+cat("There are" , nrow(missing_value_table) , "columns that have missing values.")
+```
+
+
+
+
+
+```{r}
+head(missing_value_table,15)
+
+```
+
+
+```{r warning=FALSE}
+ggplot(train,aes(TARGET))+
+    geom_bar(fill = "blue",alpha=0.3)+
+    geom_text(aes(label =scales::percent(..count../sum(..count..))),stat = 'count',vjust = -0.5)+
+    scale_y_continuous(label = comma)
+```
+
+
+```{r}
+train%>%
+    select_if(is.character)->carData
+
+colNames<-names(carData)
+carData$TARGET<-train$TARGET
+carData$SK_ID_CURR<-train$SK_ID_CURR
+
+for (name in colNames){
+  p<-distColumn(train,name,'TARGET','SK_ID_CURR') 
+  plot(p)
+}
+
+```
+
+
+
+
+
+```{r}
+train=train  %>% mutate_if(is.character, list(~factor(.)))
+```
+
+
+```{r}
+train=train  %>% mutate_if(is.integer, list(~as.numeric(.)))
+
+```
+
+
+```{r}
+train  %>% select_if(is.factor)  %>% summarise_all(n_distinct)  %>% t()
+
+```
+
+
+
+```{r}
+summary(train[,'DAYS_BIRTH'])
+
+```
+
+
+```{r}
+summary(train[,'DAYS_BIRTH'] /-365)
+
+```
+
+
+```{r}
+summary(train[,'DAYS_EMPLOYED'])
+
+```
+
+
+```{r}
+ggplot(train,aes(DAYS_EMPLOYED))+
+    geom_histogram(fill = "blue",alpha=0.3)+
+    scale_x_continuous(label = comma)+
+    scale_y_continuous(label = comma) 
+```
+
+
+```{r}
+anom= train  %>% filter(DAYS_EMPLOYED==365243)
+non_anom= train %>% filter(DAYS_EMPLOYED!=365243)
+
+
+sprintf('There are %d anomalous days of employment' , nrow(anom) )
+```
+
+
+```{r}
+train=train  %>% mutate('DAYS_EMPLOYED_ANOM' = ifelse(DAYS_EMPLOYED == c(365243),1,0),
+                        # Replace the anomalous values with nan
+                        'DAYS_EMPLOYED'= ifelse(DAYS_EMPLOYED == c(365243), NA, DAYS_EMPLOYED)
+                       )
+```
+
+
+```{r warning=FALSE}
+ggplot(train,aes(DAYS_EMPLOYED))+
+    geom_histogram(fill = "blue",alpha=0.3)+
+    scale_x_continuous(label = comma)+
+    scale_y_continuous(label = comma)+
+    ggtitle("Days Employment Histogram")
+
+```
+
+
+
+
+```{r}
+train[,'DAYS_BIRTH'] = abs(train[,'DAYS_BIRTH'])
+
+cor(train[,'DAYS_BIRTH'],train[,'TARGET'])
+```
+
+```{r}
+ggplot(train, aes(DAYS_BIRTH /365))+
+    geom_histogram(fill = "blue",alpha=0.3,bins = 25)+
+    scale_x_continuous(label = comma)+
+    scale_y_continuous(label = comma)+
+    theme_light() + 
+    labs(title = "Age of Client", x = "Age (years)")+
+    theme(plot.title = element_text(hjust = .5))
+```
+
+
+```{r}
+ggplot(train, aes(DAYS_BIRTH /365,colour=as.factor(TARGET),group=as.factor(TARGET)))+
+    geom_density()+
+    scale_x_continuous(label = comma)+
+    scale_y_continuous()+
+    theme_light() + 
+    labs(title = "Distribution of Ages", x = "Age (years)")+
+    theme(plot.title = element_text(hjust = .5))
+```
+
+```{r}
+age_data <- train %>%
+  select(TARGET, DAYS_BIRTH) %>%
+  mutate(YEARS_BIRTH = DAYS_BIRTH / 365)
+
+# Bin the age data
+age_data$YEARS_BINNED <- cut(age_data$YEARS_BIRTH, breaks = seq(20, 70, by = 5))
+head(age_data, 10)
+```
+
+
+```{r}
+# Group by the bin and calculate averages
+age_data  %>% group_by(YEARS_BINNED)  %>% summarise_all(mean)
+```
+
+```{r}
+age_data  %>% group_by(YEARS_BINNED)  %>% summarise_all(mean)  %>% 
+    ggplot(aes(x=YEARS_BINNED, y=TARGET*100))+
+        geom_col(fill = "blue",alpha=0.3)+
+        labs(title = "Failure to Repay by Age Group", x = "Age Group (years)", y= 'Failure to Repay (%)')+
+        theme(plot.title = element_text(hjust = .5))
+```
+
+
+```{r}
+ext_data = train[,c('TARGET', 'EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH')]
+ext_data_corrs = cor(ext_data, use = "pairwise")
+ext_data_corrs
+```
+
+```{r}
+melted_cormat <- melt(ext_data_corrs,na.rm=TRUE)
+head(melted_cormat)
+```
+
+```{r}
+
+```
+
+```{r}
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1,1), space = "Lab", name="Pearson\nCorrelation") +
+  labs(title='Correlation Heatmap')+
+  theme(plot.title = element_text(hjust = .5), axis.text.x = element_text(angle=90),
+       axis.title.x=element_blank(),
+       axis.title.y=element_blank())+
+  coord_fixed()+
+  geom_text(aes(Var2, Var1, label = round(value,2)), color = "black", size = 3)
+```
+
+```{r warning=FALSE}
+p1=ggplot(train, aes(EXT_SOURCE_1,colour=as.factor(TARGET),group=as.factor(TARGET)))+
+    geom_density()+
+    scale_x_continuous(breaks=seq(0,1,by=0.2))+
+    scale_y_continuous()+
+    theme_light() + 
+    labs(title = "Distribution of EXT_SOURCE_1 by Target Value", x = "EXT_SOURCE_1")+
+    theme(plot.title = element_text(hjust = .5))
+
+p2=ggplot(train, aes(EXT_SOURCE_2,colour=as.factor(TARGET),group=as.factor(TARGET)))+
+    geom_density()+
+    scale_x_continuous(breaks=seq(0,1,by=0.2))+
+    scale_y_continuous()+
+    theme_light() + 
+    labs(title = "Distribution of EXT_SOURCE_2 by Target Value", x = "EXT_SOURCE_2")+
+    theme(plot.title = element_text(hjust = .5))
+p3=ggplot(train, aes(EXT_SOURCE_3,colour=as.factor(TARGET),group=as.factor(TARGET)))+
+    geom_density()+
+    scale_x_continuous(breaks=seq(0,1,by=0.2))+
+    scale_y_continuous()+
+    theme_light() + 
+    labs(title = "Distribution of EXT_SOURCE_3 by Target Value", x = "EXT_SOURCE_3")+
+    theme(plot.title = element_text(hjust = .5))
+
+grid.arrange(p1,p2,p3,nrow=3)
+```
+
+
+
+```{r}
+numeric_list <- unlist(lapply(dt1, is.numeric))
+dt1_num <- setDT(dt1)[,..numeric_list]
+```
+
+```{r}
+#Try to Avoid
+skewValues <- as.data.frame(apply(dt1_num, 2, function(x) skewness(x, na.rm = TRUE)))
+colnames(skewValues)[1] <- "skew_values"
+skewValues <- index_to_col(skewValues,'Column')
+skewValues <- setDT(skewValues)[order (skew_values, decreasing = TRUE)]
+top_15 <- head(skewValues, 15)
+print(top_15)
+```
+
+```{r}
+BoxCoxValues <- apply(dt1_num, 2, function(x) BoxCoxTrans(x, na.rm = TRUE))
+x = list()
+
+for (i in 1:ncol(dt1_num)){
+     lambda <- BoxCoxValues[[i]][[1]]
+     x[[i]] <- lambda
+}
+
+lambda = do.call(rbind, x)
+lambda_df <- as.data.frame(cbind(colnames(dt1_num),lambda))
+colnames(lambda_df)[1] <- "Column"
+colnames(lambda_df)[2] <- "lambda"
+knitr::kable(setDT(lambda_df)[!is.na(lambda)])
+```
+
+```{r}
+preProcValues <- preProcess(dt1, method = "BoxCox")
+preProcValues
+dt1_tran <- predict(preProcValues, dt1)
+```
+
+
+```{r}
+numeric_list <- unlist(lapply(dt1_tran, is.numeric))
+dt1_num <- setDT(dt1_tran)[,..numeric_list]
+```
+
+```{r}
+col_trans <- lambda_df[!is.na(lambda)]$Column
+i = 5
+x <- list(
+  title = as.character(col_trans[i])
+)
+p1 <- plot_ly(x = ~setDT(dt1)[,get(as.character(col_trans[i]))], type = "histogram", autobinx = FALSE) %>% layout(showlegend = FALSE) 
+p2 <- plot_ly(x = ~setDT(dt1_tran)[,get(as.character(col_trans[i]))], type = "histogram", autobinx = FALSE) %>% layout(showlegend = FALSE)
+subplot(p1,p2)
+```
+
+```{r warning=FALSE}
+doPlots(as.data.frame(dt1)[, (colnames(dt1) %in% as.character(col_trans))], plotHist, ii = 1:length(col_trans))
+
+```
+
+
+```{r}
+doPlots(as.data.frame(dt1_tran)[, (colnames(dt1_tran) %in% as.character(col_trans))], plotHist, ii = 1:length(col_trans))
+
+```
+
+```{r}
+mv <- as.data.frame(apply(dt1_tran, 2, function(col)sum(is.na(col))/length(col)))
+colnames(mv)[1] <- "missing_values"
+mv <- index_to_col(mv,'Column')
+mv <- setDT(mv)[order (missing_values, decreasing = TRUE)]
+dt1_num2 <- na.aggregate(dt1_num)
+
+```
+
+```{r}
+nzv <- nearZeroVar(dt1,saveMetrics= TRUE)
+nzv <- index_to_col(nzv,"Column")
+nzv_tb <- setDT(nzv)[nzv == TRUE | zeroVar ==TRUE]
+head(nzv_tb, 15)
+```
+
+```{r}
+rm_col_nzv <- as.character(setDT(nzv)[nzv == TRUE | zeroVar ==TRUE]$Column)
+
+```
+
+
+
+```{r}
+df_corr = cor(dt1_num2, use = "pairwise.complete.obs")
+hc = findCorrelation(df_corr, cutoff=0.80)
+hc = sort(hc)
+dt1_num3 = as.data.frame(dt1_num2)[,-c(hc)]
+rm_col_hc <- setdiff(colnames(dt1_num2),colnames(dt1_num3))
+rm_col_hc
+
+```
+
+
+```{r}
+rm_col_all <- append(rm_col_hc,rm_col_nzv)
+dt1_tran <- as.data.frame(dt1_tran)[, !(colnames(dt1_tran) %in% rm_col_all)]
+
+```
+
+
+```{r}
+numeric_list <- unlist(lapply(dt1_tran, is.numeric))
+dt1_num <- setDT(dt1_tran)[,..numeric_list]
+```
+
+
+```{r}
+non_numeric_list <- unlist(lapply(dt1_tran, is.character))
+dt1_non_num <- setDT(dt1_tran)[,..non_numeric_list]
+```
+
+
+```{r}
+dt1_non_num <- cbind(dt1_non_num,dt1_tran[,'TARGET'])
+dummies <- dummyVars(TARGET ~ ., data = dt1_non_num, drop2nd = TRUE)
+dt1_non_num_dum <- predict(dummies, newdata = dt1_non_num)
+
+```
+
+
+```{r}
+dt1_preproc <- cbind(dt1_non_num_dum,dt1_num)
+
+mv <- as.data.frame(apply(dt1_preproc, 2, function(col)sum(is.na(col))/length(col)))
+colnames(mv)[1] <- "missing_values"
+mv <- index_to_col(mv,'Column')
+mv <- setDT(mv)[order (missing_values, decreasing = TRUE)]
+
+ggplot (mv[1:40,], aes (reorder(Column, missing_values), missing_values)) + geom_bar (position = position_dodge(), stat = "identity") + coord_flip () + xlab('Columns') + ylab('Missing Value %')
+
+dt1_preproc <- na.aggregate(dt1_preproc)
+
+```
+
+
+```{r}
+set.seed(1234)
+dt1_preproc_sample <- setDT(dt1_preproc)[sample(nrow(dt1_preproc), round(nrow(dt1_preproc)*0.4,0)),]
+```
+
+RFE(comment this out we'll insert screenshot)
+```{r}
+ control <- rfeControl(functions=rfFuncs, method="cv", number=3)
+trainctrl <- trainControl(classProbs= TRUE, summaryFunction = twoClassSummary)
+
+results <- rfe(as.data.frame(dt1_preproc_sample)[,-c(153)],as.data.frame(dt1_preproc_sample)[,c(153)], sizes=c(1:100), rfeControl=control, method="rf",metric = "AUC", trControl = trainctrl)
+print(results)
+
+```
+
+
+
+
+```{r}
+cols_to_keep <- c('FLAG_OWN_CARN','`ORGANIZATION_TYPEIndustry: type 1`','DAYS_ID_PUBLISH','SK_ID_CURR','REG_CITY_NOT_LIVE_CITY','YEARS_BEGINEXPLUATATION_MODE','COMMONAREA_MODE','FLOORSMAX_MODE','LIVINGAPARTMENTS_MODE','YEARS_BUILD_MEDI','CODE_GENDERM','OCCUPATION_TYPEWaiters/barmen staff','TARGET','EXT_SOURCE_1','EXT_SOURCE_2','EXT_SOURCE_3','CNT_CHILDREN')
+dt1_preproc_sample <- as.data.frame(dt1_preproc_sample)[, (colnames(dt1_preproc_sample) %in% cols_to_keep)]
+
+dt1_preproc <- as.data.frame(dt1_preproc)[, (colnames(dt1_preproc) %in% cols_to_keep)]
+
+cols_to_keep
+
+```
+
+
+```{r include=FALSE}
+predictors <- setDT(dt1_preproc)[,-c('TARGET')]
+classes <- as.factor(dt1_preproc$TARGET)
+trainingRows <- createDataPartition(y=classes, p = 0.80, list =FALSE)
+trainPredictors <- predictors[trainingRows,]
+trainclasses <- classes[trainingRows]
+testPredictors <- predictors[-trainingRows,]
+testClasses <- classes[-trainingRows]
+```
+
+```{r}
+library(caret)
+library(rsample)
+
+unique(dt1_preproc$TARGET)
+
+dt1_preproc$TARGET <- ifelse(dt1_preproc$TARGET == 0, 'Yes', 'No')
+dt1_preproc$TARGET <- as.factor(dt1_preproc$TARGET)
+
+# Create training and testing data partitions
+inTrain <- createDataPartition(dt1_preproc$TARGET, p = 0.8, list = FALSE)
+
+dtTrain <- dt1_preproc[inTrain, ]
+dtTest <- dt1_preproc[-inTrain, ]
+```
+
+```{r include=FALSE}
+dtTest<-read.csv('dtTest.csv')
+dtTrain<-read.csv('dtTrain.csv')
+dtTrain$TARGET <- as.factor(dtTrain$TARGET)
+dtTest$TARGET <- as.factor(dtTest$TARGET)
+```
+
+
+```{r}
+set.seed(123)
+subset_indices <- createDataPartition(dtTrain$TARGET, p = 0.1, list = FALSE, times = 1)
+subset_train_data <- dtTrain[subset_indices, ]
+subset_train_data$TARGET <- as.factor(subset_train_data$TARGET)
+
+```
+
+
+
+
+
+```{r}
+traincntrl <- trainControl(method = 'repeatedcv',
+                                         number = 5,
+                                         repeats = 2,
+                                         classProbs = TRUE, 
+                                         sampling = "down",
+                                         summaryFunction = twoClassSummary)
+```
+
+
+
+```{r warning=FALSE}
+svmFit <- train(TARGET ~.,
+                data = subset_train_data,
+                method = 'svmRadial',
+                preProc = c('center','scale'),
+                tuneLength = 3,
+                trControl = traincntrl)
+
+svmFit
+```
+
+```{r}
+plot(svmFit, scales = list(x=list(log =2)))
+
+```
+
+
+```{r}
+predictClasses <- predict(svmFit, dtTest)
+predictProbs <- predict(svmFit, newdata = dtTest, type = "prob")
+
+```
+
+```{r}
+confusionMatrix(predictClasses, dtTest$TARGET)
+```
+
+
+
+KNN
+
+```{r warning=FALSE}
+knnFit <- train(TARGET ~.,
+                data = subset_train_data,
+                method = "knn",
+                preProc = c("center", "scale"),
+                metric = "Accuracy",
+                tuneGrid = data.frame(.k = 1:20),
+                trControl = traincntrl)
+
+knnFit$results
+```
+
+```{r}
+predictions_knn <- predict(knnFit, newdata = dtTest)
+
+
+```
+
+```{r}
+conf_matrix <- confusionMatrix(predictions_knn, dtTest$TARGET)
+conf_matrix
+```
+
+
+
+
+Logistic
+```{r}
+logisticReg <- train(TARGET ~.,
+                     data = dtTrain,
+                     method = 'glm',
+                     metric="Accuracy",
+                     trControl = traincntrl)
+
+```
+
+```{r}
+library(pROC)
+predictions <- predict(logisticReg, newdata = dtTest, type = "raw")
+confusionMatrix(predictions, dtTest$TARGET)
+roc_curve <- roc(dtTest$TARGET, as.numeric(predictions == "Yes"))  # Assuming "Yes" is the positive class
+
+
+
+```
+
+```{r}
+plot(roc_curve, main = "ROC Curve for Binary Classification Model", col = "blue")
+```
+
+

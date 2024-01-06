@@ -1,0 +1,768 @@
+---
+title: "Loan Approval Modeling and Predictive Analytics"
+author's: "Lakshmi Sreya Rapolu, Ashwin Muthuraman, Sai Srinivas Lakkoju"
+# date: "today"
+date: "`r Sys.Date()`" 
+# this style requires installing rmdformats package 
+output:  
+    rmdformats::readthedown:
+      toc_float: true
+      toc_depth: 3
+      number_sections: true
+      code_folding: hide
+      includes:
+        before_body: header.tmphtml
+---
+
+
+# Introduction
+
+In today's rapidly evolving financial sector, the efficient management of loan repayment is crucial for both lending institutions and borrowers. This project represents a strategic initiative to apply the latest in data science and machine learning to enhance the loan approval process. Our data-driven approach utilizes an extensive dataset, encompassing the profiles of over 300,000 loan applicants across 122 variables, to predict loan approval outcomes with a focus on repayment history. The aim is to create a predictive model that not only interprets applicant data but also offers actionable insights for lenders.
+
+The primary objective of our research is to thoroughly analyze applicant characteristics and financial indicators within our dataset. This involves identifying patterns in the repayment history of borrowers, especially those in default, to develop predictive models. These models are designed to be more than statistical tools; they serve as strategic assets that can potentially streamline the loan approval process, enhancing efficiency and accuracy.
+
+Our ambition goes beyond traditional data analysis. We are seeking to transform the way lending institutions make decisions, providing a deeper and more comprehensive risk assessment tool. The goal is to facilitate a shift in loan approval processes, reducing associated risks and improving the overall lending experience for all parties involved. This project is not just about handling data; it's about innovating in the realm of financial decision-making.
+
+The dataset chosen for this project includes critical variables that shed light on various aspects of an applicant's profile, such as contract type, gender, car ownership, real estate ownership, and more. Analyzing these variables is crucial for our predictive modeling, offering insights into the diverse backgrounds and circumstances of loan applicants. This analysis is the cornerstone of our approach, aiming to enhance the accuracy and relevance of our loan approval predictions.
+
+```{r init, include=F}
+library(data.table)
+library(tidyverse)   
+library(caret) 
+library(DataExplorer)
+library(knitr)
+library(readr)
+library(dplyr)
+library(gridExtra)
+library(scales)
+library(reshape2)
+library(forcats)
+library(MASS)
+library(stats)
+library(magrittr)
+library(purrr)
+library(GGally)
+library(tidyverse)
+library(plotly)
+library(knitr)
+library(ggthemes)
+library(highcharter)
+library(igraph)
+library(ggraph)
+library(qgraph)
+library(visNetwork)
+library(matrixStats)
+library(lubridate)
+library(corrplot)
+library(e1071)
+library(xgboost)
+library(caret)
+library(zoo)
+library(factoextra)
+library(plotly)
+library(DT)
+```
+
+**Reading the Dataset**
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+train <- fread("application_train.csv", na.strings=c("NA","NaN","?", "","XNA"))
+test <- fread("application_test.csv", na.strings=c("NA","NaN","?", "","XNA"),showProgress = FALSE)
+dt1 <- fread('application_train.csv', showProgress = FALSE)
+app <- read_csv("application_train.csv") %>% mutate(TARGET=as.factor(TARGET))
+```
+
+```{r}
+glimpse(train)
+```
+
+```{r include=FALSE}
+colour.mapping <- c('1' = '#FFC000', '0' = '#D9D9D9')
+
+gg.theme <- list(theme_light(), scale_fill_manual(values=colour.mapping)) # This is used for all the charts
+
+short.num <- function(num) { 
+  div <- findInterval(num, c(0, 1e3, 1e6, 1e9, 1e12))
+  out <- paste0(round(num/10^(3*(div-1)), 2), c("","K","M","B","T")[div])
+  return(out)
+}
+
+clean.names <- function(df) {
+  new.names <- df %>% names %>% tolower %>% str_replace_all('_', ' ') %>% tools::toTitleCase()
+  df %<>% setNames(new.names) 
+  return(df)
+}
+
+add.counts.and.plot <- function(df, axis.angle=0, scales='free', reorder=T, melt=T) {
+  
+  if (melt) {df %<>% clean.names %>% melt('Target') } 
+  
+  df %<>%
+    group_by(variable, value, Target) %>%
+    summarise(Count=n()) %>%
+    mutate(Percent=Count/sum(Count))
+
+  if (reorder) {df$value %<>% reorder(-df$Count)}
+  
+  ### If angle is not 0 (so 90 degrees), it would rotate and adjust the positions of the labels
+  if (axis.angle==0) {axis.text.x <- element_text()
+  } else {axis.text.x <- element_text(angle = axis.angle, hjust=1, vjust=0.5)}
+  
+  gg.layer <- list(gg.theme,
+                   geom_bar(stat='identity'),
+                   facet_wrap('variable', nrow = 1, scales=scales),
+                   scale_y_continuous(na.value = ''),
+                   theme(axis.ticks.x=element_blank(), axis.title.x = element_blank()))
+  
+  plot.cnt <- ggplot(df, aes(value, Count  , fill=Target)) + gg.layer + 
+    scale_y_continuous(labels=short.num) + theme(axis.text.x = element_blank())
+  plot.pct <- ggplot(df, aes(value, Percent, fill=Target)) + gg.layer + 
+    scale_y_continuous(labels=percent  ) + theme(axis.text.x = axis.text.x    )
+  
+  plot <- gridExtra::grid.arrange(plot.cnt, plot.pct)
+  
+  return(plot)
+}
+
+doPlots <- function(data_in, fun, ii, ncol=3) {
+  pp <- list()
+  for (i in ii) {
+    p <- fun(data_in=data_in, i=i)
+    pp <- c(pp, list(p))
+  }
+  do.call("grid.arrange", c(pp, ncol=ncol))
+}
+
+```
+
+```{r include=FALSE}
+index_to_col <- function(data, Column_Name){
+          data <- cbind(newColName = rownames(data), data)
+          rownames(data) <- 1:nrow(data)
+          colnames(data)[1] <- Column_Name
+          return (data)
+        }
+```
+
+```{r include=FALSE}
+plotHist <- function(data_in, i) {
+  data <- data.frame(x=data_in[[i]])
+  p <- ggplot(data=data, aes(x=x)) + geom_histogram(bins=100, fill="#0072B2", alpha = .9) + xlab(colnames(data_in)[i]) + theme_light() + 
+    theme(axis.text.x = element_text(angle = 90, hjust =1))
+  return (p)
+}
+```
+
+```{r include=FALSE}
+distColumn<-function(data,column,target,primaryKey){
+
+    cols <- c('#3cba54','#f4c20d','#db3236','#4885ed') 
+   data%>%
+        select(column,target,primaryKey)->inputData
+    
+    names(inputData)[1]<-'col'
+    names(inputData)[2]<-'tar'
+    names(inputData)[3]<-'key'
+    
+    inputData%>%
+        group_by(col,tar)%>%
+        summarise(count=length(unique(key)))%>%
+        mutate(tar=as.character(tar))%>%
+        ungroup()->plotData
+    plotTitle<-paste('Plot of ',column,'vs',target,sep=' ')
+    ggplot(plotData,aes(col,count,fill=tar))+
+    geom_bar(stat='identity',colour='black')+
+    coord_flip()+
+    ggtitle(plotTitle)+
+    xlab(column)+
+    ylab('count')+
+    theme_linedraw()    
+}
+```
+
+```{r}
+cat("application_train : (" , nrow(train) , "," , ncol(train) , ")\n")
+a=colnames(train)
+b=colSums(is.na(train))  %>% as.data.table
+
+missing_value_table=cbind(a,b)
+
+colnames(missing_value_table)=c("variables","Missing_values")
+
+missing_value_table = missing_value_table  %>% filter(Missing_values>0)  %>% 
+                        mutate("% of Total Values" = round(100 * (Missing_values / nrow(train)),1))  %>% 
+                        arrange(desc(Missing_values))
+cat("Your selected dataframe has" , ncol(train) , " columns.\n")
+cat("There are" , nrow(missing_value_table) , "columns that have missing values.")
+plot_intro(train)
+```
+
+In our analysis of the application_train dataset, comprising 307,511 rows and 122 columns, we identified that 69 columns have missing values. Notably, discrete and continuous columns constitute 13.1% and 86.9%, respectively. Fortunately, there are no entirely missing columns, and 2.8% of rows are complete. However, 24.5% of observations have some missing values. These findings offer a holistic view of the dataset's composition and highlight areas requiring attention, ensuring a more informed and strategic approach to our analysis and decision-making processes.
+
+
+```{r}
+head(missing_value_table,15)
+```
+
+**Examining the Target Variable**
+
+```{r warning=FALSE}
+ggplot(train,aes(TARGET))+
+    geom_bar(fill = "blue",alpha=0.3)+
+    geom_text(aes(label =scales::percent(..count../sum(..count..))),stat = 'count',vjust = -0.5)+
+    scale_y_continuous(label = comma)
+```
+
+The bar plot of the TARGET variable in the indicates a highly imbalanced class problem, with 92% of loans falling into the category of timely repayments and only 8% representing defaults. This observation underscores the need to address the data imbalance issue for effective model training. To mitigate this, we assigned appropriate weights to the classes during the training phase, ensuring that the model is not skewed toward the majority class and can make more accurate predictions for both repayment outcomes.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+train%>%
+    select_if(is.character)->carData
+
+colNames<-names(carData)
+carData$TARGET<-train$TARGET
+carData$SK_ID_CURR<-train$SK_ID_CURR
+
+for (name in colNames){
+  p<-distColumn(train,name,'TARGET','SK_ID_CURR') 
+  plot(p)
+}
+```
+
+The visual analysis of loan categories based on applicant characteristics reveals several key observations:
+
+Cash Loans Dominance: The majority of loans taken were in the form of Cash Loans, and a significant portion of these loans were repaid on time.
+
+Occupational Impact: Different occupational groups exhibit varying repayment behaviors. Working individuals, state servants, and commercial associates took a considerable number of loans, with a default rate of roughly 5% or less. In contrast, laborers secured the highest number of loans and displayed timely repayment.
+
+Sector Disparities: Loans were less frequent among individuals in IT and HR sectors, suggesting a lower demand or eligibility within these professional domains.
+
+The graphical representations provide a succinct overview, presenting both the percentage and count of loans taken, along with a breakdown of timely repayments and defaults. These insights can guide strategic decision-making for lending institutions, aiding in risk assessment and resource allocation.
+
+
+```{r}
+train=train  %>% mutate_if(is.character, list(~factor(.)))
+train=train  %>% mutate_if(is.integer, list(~as.numeric(.)))
+train  %>% select_if(is.factor)  %>% summarise_all(n_distinct)  %>% t()
+```
+
+```{r}
+summary(train[,'DAYS_BIRTH'])
+```
+
+```{r}
+summary(train[,'DAYS_BIRTH'] /-365)
+```
+
+```{r}
+summary(train[,'DAYS_EMPLOYED'])
+```
+
+```{r message=FALSE, warning=FALSE}
+ggplot(train,aes(DAYS_EMPLOYED))+
+    geom_histogram(fill = "blue",alpha=0.3)+
+    scale_x_continuous(label = comma)+
+    scale_y_continuous(label = comma) 
+```
+
+```{r}
+anom= train  %>% filter(DAYS_EMPLOYED==365243)
+non_anom= train %>% filter(DAYS_EMPLOYED!=365243)
+
+sprintf('There are %d anomalous days of employment' , nrow(anom) )
+```
+
+In our analysis, we discovered a group of anomalous values in the "DAYS_EMPLOYED" column where all instances had a value of 365,243. Surprisingly, loans associated with these anomalies exhibited a lower default rate (5.40%) compared to non-anomalous cases(8.66%). Given this intriguing finding, handling these anomalies becomes crucial. We opted for a cautious approach, transforming the anomalous values to NaN and introducing a new boolean column to signify the original anomaly status. This preprocessing step aligns the employment days distribution more closely with expectations. Our strategy involves filling NaN values,acknowledging the original anomaly status. The transformation aims to enhance the model's understanding, paving the way for more accurate predictions.
+
+
+```{r include=FALSE}
+train=train  %>% mutate('DAYS_EMPLOYED_ANOM' = ifelse(DAYS_EMPLOYED == c(365243),1,0),
+                        # Replace the anomalous values with nan
+                        'DAYS_EMPLOYED'= ifelse(DAYS_EMPLOYED == c(365243), NA, DAYS_EMPLOYED)
+                       )
+```
+
+```{r message=FALSE, warning=FALSE}
+ggplot(train,aes(DAYS_EMPLOYED))+
+    geom_histogram(fill = "blue",alpha=0.3)+
+    scale_x_continuous(label = comma)+
+    scale_y_continuous(label = comma)+
+    ggtitle("Days Employment Histogram")
+```
+
+
+**Effect of Age on Repayment**
+
+```{r}
+train[,'DAYS_BIRTH'] = abs(train[,'DAYS_BIRTH'])
+
+cor(train[,'DAYS_BIRTH'],train[,'TARGET'])
+```
+
+"DAYS_BIRTH" variable exhibits the most positive correlation with loan repayment. This variable represents the age of the client at the time of the loan, expressed in negative days. The positive correlation implies that, counterintuitively, as clients get older (i.e., the absolute value of "DAYS_BIRTH" increases), they are less likely to default on their loans. To clarify, we transformed the variable to its absolute value, revealing a negative correlation of approximately -0.0782. This negative correlation indicates that, in general, as clients age, there is a tendency for them to repay their loans on time more frequently. Visualizing this relationship through a histogram of client ages in years provides a clearer understanding of the age-related dynamics in loan repayment behavior.
+
+
+```{r}
+ggplot(train, aes(DAYS_BIRTH /365))+
+    geom_histogram(fill = "blue",alpha=0.3,bins = 25)+
+    scale_x_continuous(label = comma)+
+    scale_y_continuous(label = comma)+
+    theme_light() + 
+    labs(title = "Age of Client", x = "Age (years)")+
+    theme(plot.title = element_text(hjust = .5))
+```
+
+On its own, analyzing the age distribution provides limited insights, mainly confirming the absence of outliers as all recorded ages appear reasonable. To gain a deeper understanding of how age influences the target variable, we employed a Kernel Density Estimation plot (KDE) that incorporates color differentiation based on the target values.
+
+A Kernel Density Estimate plot serves as a valuable visualization tool, illustrating the distribution of a single variable akin to a smoothed histogram. This plot is generated by computing a kernel, at each data point and subsequently averaging these individual kernels to produce a unified, smooth curve.
+
+In the forthcoming analysis, we will leverage the ggplot KDE plot to create an insightful graph that sheds light on the relationship between age and the target variable. The color-coded KDE plot will provide a nuanced depiction of how age dynamics correlate with the target, offering a more comprehensive view of the impact of age on loan repayment behavior.
+
+
+```{r}
+ggplot(train, aes(DAYS_BIRTH /365,colour=as.factor(TARGET),group=as.factor(TARGET)))+
+    geom_density()+
+    scale_x_continuous(label = comma)+
+    scale_y_continuous()+
+    theme_light() + 
+    labs(title = "Distribution of Ages", x = "Age (years)")+
+    theme(plot.title = element_text(hjust = .5))
+```
+
+We generated a density plot illustrating the distribution of ages, color-coded by the target variable. The plot reveals that the curve corresponding to the target variable (TARGET == 1) skews towards the younger age range. Although the correlation coefficient is not notably high (-0.07), the variable remains valuable for machine learning models due to its discernible impact on the target.
+
+In a complementary analysis, the age data is binned into 5-year intervals, allowing for a closer examination of the relationship between age and loan repayment. By calculating the average value of the target variable within each age bracket, the graph provides insights into the proportion of loans that were not repaid in different age categories. This approach offers a nuanced perspective on the influence of age on the likelihood of loan repayment failure.
+
+
+```{r}
+age_data <- train %>%
+  select(TARGET, DAYS_BIRTH) %>%
+  mutate(YEARS_BIRTH = DAYS_BIRTH / 365)
+
+# Bin the age data
+age_data$YEARS_BINNED <- cut(age_data$YEARS_BIRTH, breaks = seq(20, 70, by = 5))
+head(age_data, 10)
+```
+
+```{r}
+# Group by the bin and calculate averages
+age_data  %>% group_by(YEARS_BINNED)  %>% summarise_all(mean)
+```
+
+```{r}
+age_data  %>% group_by(YEARS_BINNED)  %>% summarise_all(mean)  %>% 
+    ggplot(aes(x=YEARS_BINNED, y=TARGET*100))+
+        geom_col(fill = "blue",alpha=0.3)+
+        labs(title = "Failure to Repay by Age Group", x = "Age Group (years)", y= 'Failure to Repay (%)')+
+        theme(plot.title = element_text(hjust = .5))
+```
+
+The presented visualization and analysis of the grouped age data clearly highlight a discernible trend: younger applicants exhibit a higher likelihood of failing to repay loans. Specifically, the failure to repay rates surpass 10% for the three youngest age categories, contrasting with rates below 5% for the oldest age group.
+
+This actionable insight carries direct implications for the bank's decision-making processes. The information suggests that younger clients may benefit from additional support, guidance, or financial planning tips to enhance their repayment capabilities. Importantly, this recommendation is not advocating for discriminatory practices but rather underscores the prudence of implementing precautionary measures to assist younger clients in meeting their payment obligations more effectively. While age alone may not be a decisive factor, incorporating it into machine learning models can contribute to more nuanced credit risk assessments.
+
+
+
+**Exterior Sources Analysis**
+
+The analysis of exterior data sources reveals three variables, namely EXT_SOURCE_1, EXT_SOURCE_2, and EXT_SOURCE_3, with the most notable negative correlations with the target variable. As per the documentation, these features represent normalized scores derived from external data sources, potentially constituting a cumulative credit rating based on diverse data inputs.
+
+```{r}
+ext_data = train[,c('TARGET', 'EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH')]
+ext_data_corrs = cor(ext_data, use = "pairwise")
+ext_data_corrs
+```
+
+```{r}
+melted_cormat <- melt(ext_data_corrs,na.rm=TRUE)
+head(melted_cormat)
+```
+
+The correlation matrix illustrates the relationships between these external sources and the target, as well as their intercorrelations. Notably, EXT_SOURCE_1, EXT_SOURCE_2, and EXT_SOURCE_3 all exhibit negative correlations with the target, suggesting that higher scores from these external sources are associated with a lower likelihood of loan default. Moreover, examining the correlations between the external sources themselves and with other variables like DAYS_BIRTH provides a comprehensive view of their interconnectedness.
+
+These findings imply that these external sources, capturing additional information beyond the immediate loan application, play a crucial role in predicting the likelihood of timely loan repayment. In a practical sense, these external data features can serve as valuable inputs for machine learning models, contributing to more accurate assessments of creditworthiness and aiding in risk mitigation for the lending institution.
+
+
+```{r}
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1,1), space = "Lab", name="Pearson\nCorrelation") +
+  labs(title='Correlation Heatmap')+
+  theme(plot.title = element_text(hjust = .5), axis.text.x = element_text(angle=90),
+       axis.title.x=element_blank(),
+       axis.title.y=element_blank())+
+  coord_fixed()+
+  geom_text(aes(Var2, Var1, label = round(value,2)), color = "black", size = 3)
+```
+
+The presented correlation heatmap visually encapsulates the relationships between different variables, particularly highlighting the Pearson correlation coefficients. The three EXT_SOURCE features exhibit negative correlations with the target, implying that higher EXT_SOURCE values are associated with a greater likelihood of loan repayment. Additionally, there's a positive correlation between DAYS_BIRTH and EXT_SOURCE_1, suggesting that client age might influence this scoring mechanism.
+
+To delve deeper into the impact of these features on loan repayment, the distribution of each variable is explored, color-coded by the target value. This approach enables a more nuanced understanding of how each variable influences the likelihood of loan default. Such insights are crucial for refining credit risk assessment models and tailoring strategies to enhance the overall repayment rates for clients.
+
+
+```{r warning=FALSE}
+p1=ggplot(train, aes(EXT_SOURCE_1,colour=as.factor(TARGET),group=as.factor(TARGET)))+
+    geom_density()+
+    scale_x_continuous(breaks=seq(0,1,by=0.2))+
+    scale_y_continuous()+
+    theme_light() + 
+    labs(title = "Distribution of EXT_SOURCE_1 by Target Value", x = "EXT_SOURCE_1")+
+    theme(plot.title = element_text(hjust = .5))
+
+p2=ggplot(train, aes(EXT_SOURCE_2,colour=as.factor(TARGET),group=as.factor(TARGET)))+
+    geom_density()+
+    scale_x_continuous(breaks=seq(0,1,by=0.2))+
+    scale_y_continuous()+
+    theme_light() + 
+    labs(title = "Distribution of EXT_SOURCE_2 by Target Value", x = "EXT_SOURCE_2")+
+    theme(plot.title = element_text(hjust = .5))
+p3=ggplot(train, aes(EXT_SOURCE_3,colour=as.factor(TARGET),group=as.factor(TARGET)))+
+    geom_density()+
+    scale_x_continuous(breaks=seq(0,1,by=0.2))+
+    scale_y_continuous()+
+    theme_light() + 
+    labs(title = "Distribution of EXT_SOURCE_3 by Target Value", x = "EXT_SOURCE_3")+
+    theme(plot.title = element_text(hjust = .5))
+
+grid.arrange(p1,p2,p3,nrow=3)
+```
+
+The visualizations of EXT_SOURCE_1, EXT_SOURCE_2, and EXT_SOURCE_3 distributions, stratified by the target value, reveal interesting insights. While all three features exhibit subtle differences between the target values, EXT_SOURCE_3 stands out as having the most pronounced distinction. This suggests that EXT_SOURCE_3 holds a discernible relationship with the likelihood of loan repayment. Despite the correlations being characterized as weak, these variables, including EXT_SOURCE_1 and EXT_SOURCE_2, remain valuable inputs for a machine learning model. Leveraging these features in predictive models can contribute to assessing and forecasting an applicant's repayment behavior, enhancing the precision of credit risk evaluations.
+
+
+# Feature Engineering
+
+```{r include=FALSE}
+numeric_list <- unlist(lapply(dt1, is.numeric))
+dt1_num <- setDT(dt1)[,..numeric_list]
+```
+
+In optimizing predictor variables for enhanced machine learning model performance, a systematic feature engineering process was employed. This involved centering and scaling to standardize predictor values, mitigating skewness by applying logarithmic, square root, or inverse transformations to numeric variables, and employing Box-Cox transformation to further enhance non-normal distributions. Lambda estimates were derived for each predictor, indicating the extent of transformation. Pre-processing steps incorporated Box-Cox transformations for specific columns, contributing to improved data normality. The impact of these transformations was visually assessed through histograms, providing a clear before-and-after view. These efforts aim to create a more robust set of predictor variables, potentially boosting the effectiveness of subsequent machine learning models.
+
+
+```{r}
+#Skew Values
+skewValues <- as.data.frame(apply(dt1_num, 2, function(x) skewness(x, na.rm = TRUE)))
+colnames(skewValues)[1] <- "skew_values"
+skewValues <- index_to_col(skewValues,'Column')
+skewValues <- setDT(skewValues)[order (skew_values, decreasing = TRUE)]
+top_15 <- head(skewValues, 15)
+print(top_15)
+```
+
+```{r}
+BoxCoxValues <- apply(dt1_num, 2, function(x) BoxCoxTrans(x, na.rm = TRUE))
+x = list()
+
+for (i in 1:ncol(dt1_num)){
+     lambda <- BoxCoxValues[[i]][[1]]
+     x[[i]] <- lambda
+}
+
+lambda = do.call(rbind, x)
+lambda_df <- as.data.frame(cbind(colnames(dt1_num),lambda))
+colnames(lambda_df)[1] <- "Column"
+colnames(lambda_df)[2] <- "lambda"
+knitr::kable(setDT(lambda_df)[!is.na(lambda)])
+```
+
+```{r}
+preProcValues <- preProcess(dt1, method = "BoxCox")
+preProcValues
+dt1_tran <- predict(preProcValues, dt1)
+```
+
+```{r include=FALSE}
+numeric_list <- unlist(lapply(dt1_tran, is.numeric))
+dt1_num <- setDT(dt1_tran)[,..numeric_list]
+```
+
+```{r warning=FALSE}
+col_trans <- lambda_df[!is.na(lambda)]$Column
+i = 5
+x <- list(
+  title = as.character(col_trans[i])
+)
+p1 <- plot_ly(x = ~setDT(dt1)[,get(as.character(col_trans[i]))], type = "histogram", autobinx = FALSE) %>% layout(showlegend = FALSE) 
+p2 <- plot_ly(x = ~setDT(dt1_tran)[,get(as.character(col_trans[i]))], type = "histogram", autobinx = FALSE) %>% layout(showlegend = FALSE)
+subplot(p1,p2)
+```
+
+
+**Before Transformation**
+
+```{r warning=FALSE}
+doPlots(as.data.frame(dt1)[, (colnames(dt1) %in% as.character(col_trans))], plotHist, ii = 1:length(col_trans))
+```
+
+
+**After Transformation**
+
+```{r warning=FALSE}
+doPlots(as.data.frame(dt1_tran)[, (colnames(dt1_tran) %in% as.character(col_trans))], plotHist, ii = 1:length(col_trans))
+```
+
+```{r include=FALSE}
+mv <- as.data.frame(apply(dt1_tran, 2, function(col)sum(is.na(col))/length(col)))
+colnames(mv)[1] <- "missing_values"
+mv <- index_to_col(mv,'Column')
+mv <- setDT(mv)[order (missing_values, decreasing = TRUE)]
+dt1_num2 <- na.aggregate(dt1_num)
+```
+
+
+**Removing Predictors**
+
+```{r}
+nzv <- nearZeroVar(dt1,saveMetrics= TRUE)
+nzv <- index_to_col(nzv,"Column")
+nzv_tb <- setDT(nzv)[nzv == TRUE | zeroVar ==TRUE]
+head(nzv_tb, 15)
+```
+
+```{r include=FALSE}
+rm_col_nzv <- as.character(setDT(nzv)[nzv == TRUE | zeroVar ==TRUE]$Column)
+```
+
+```{r}
+df_corr = cor(dt1_num2, use = "pairwise.complete.obs")
+hc = findCorrelation(df_corr, cutoff=0.80)
+hc = sort(hc)
+dt1_num3 = as.data.frame(dt1_num2)[,-c(hc)]
+rm_col_hc <- setdiff(colnames(dt1_num2),colnames(dt1_num3))
+rm_col_hc
+```
+
+We removed all the columns identified as highly correlated and/or nzv. Added Predictors and changed the categorical to dummy variables.
+
+
+```{r include=FALSE}
+rm_col_all <- append(rm_col_hc,rm_col_nzv)
+dt1_tran <- as.data.frame(dt1_tran)[, !(colnames(dt1_tran) %in% rm_col_all)]
+```
+
+```{r include=FALSE}
+numeric_list <- unlist(lapply(dt1_tran, is.numeric))
+dt1_num <- setDT(dt1_tran)[,..numeric_list]
+```
+
+```{r include=FALSE}
+non_numeric_list <- unlist(lapply(dt1_tran, is.character))
+dt1_non_num <- setDT(dt1_tran)[,..non_numeric_list]
+```
+
+```{r include=FALSE}
+dt1_non_num <- cbind(dt1_non_num,dt1_tran[,'TARGET'])
+dummies <- dummyVars(TARGET ~ ., data = dt1_non_num, drop2nd = TRUE)
+dt1_non_num_dum <- predict(dummies, newdata = dt1_non_num)
+```
+
+```{r}
+dt1_preproc <- cbind(dt1_non_num_dum,dt1_num)
+
+mv <- as.data.frame(apply(dt1_preproc, 2, function(col)sum(is.na(col))/length(col)))
+colnames(mv)[1] <- "missing_values"
+mv <- index_to_col(mv,'Column')
+mv <- setDT(mv)[order (missing_values, decreasing = TRUE)]
+
+ggplot (mv[1:40,], aes (reorder(Column, missing_values), missing_values)) + geom_bar (position = position_dodge(), stat = "identity") + coord_flip () + xlab('Columns') + ylab('Missing Value %')
+
+dt1_preproc <- na.aggregate(dt1_preproc)
+```
+
+```{r include=FALSE}
+set.seed(1234)
+dt1_preproc_sample <- setDT(dt1_preproc)[sample(nrow(dt1_preproc), round(nrow(dt1_preproc)*0.01,0)),]
+
+```
+
+We used the Recursive Feature Elimination method to select the variables in order to decrease computational time going forward.
+
+
+**Recursive Feature Extraction**
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+control <- rfeControl(functions=rfFuncs, method="cv", number=3)
+trainctrl <- trainControl(classProbs= TRUE, summaryFunction = twoClassSummary)
+
+results <- rfe(as.data.frame(dt1_preproc_sample)[,-c(153)],as.data.frame(dt1_preproc_sample)[,c(153)], sizes=c(1:100), rfeControl=control, method="rf",metric = "AUC", trControl = trainctrl)
+print(results)
+```
+
+
+```{r}
+cols_to_keep <- c('FLAG_OWN_CARN','`ORGANIZATION_TYPEIndustry: type 1`','DAYS_ID_PUBLISH','SK_ID_CURR','REG_CITY_NOT_LIVE_CITY','YEARS_BEGINEXPLUATATION_MODE','COMMONAREA_MODE','FLOORSMAX_MODE','LIVINGAPARTMENTS_MODE','YEARS_BUILD_MEDI','CODE_GENDERM','OCCUPATION_TYPEWaiters/barmen staff','TARGET','EXT_SOURCE_1','EXT_SOURCE_2','EXT_SOURCE_3','CNT_CHILDREN')
+dt1_preproc_sample <- as.data.frame(dt1_preproc_sample)[, (colnames(dt1_preproc_sample) %in% cols_to_keep)]
+
+dt1_preproc <- as.data.frame(dt1_preproc)[, (colnames(dt1_preproc) %in% cols_to_keep)]
+
+cols_to_keep
+```
+
+These are the final features we selected for our model.
+
+```{r include=FALSE}
+predictors <- setDT(dt1_preproc)[,-c('TARGET')]
+classes <- as.factor(dt1_preproc$TARGET)
+trainingRows <- createDataPartition(y=classes, p = 0.80, list =FALSE)
+trainPredictors <- predictors[trainingRows,]
+trainclasses <- classes[trainingRows]
+testPredictors <- predictors[-trainingRows,]
+testClasses <- classes[-trainingRows]
+```
+
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(rsample)
+
+unique(dt1_preproc$TARGET)
+
+dt1_preproc$TARGET <- ifelse(dt1_preproc$TARGET == 0, 'Yes', 'No')
+dt1_preproc$TARGET <- as.factor(dt1_preproc$TARGET)
+
+# Create training and testing data partitions
+inTrain <- createDataPartition(dt1_preproc$TARGET, p = 0.8, list = FALSE)
+dtTrain <- dt1_preproc[inTrain, ]
+dtTest <- dt1_preproc[-inTrain, ]
+```
+
+```{r include=FALSE}
+dtTest<-read.csv('dtTest.csv')
+dtTrain<-read.csv('dtTrain.csv')
+dtTrain$TARGET <- as.factor(dtTrain$TARGET)
+dtTest$TARGET <- as.factor(dtTest$TARGET)
+```
+
+```{r include=FALSE}
+set.seed(123)
+subset_indices <- createDataPartition(dtTrain$TARGET, p = 0.1, list = FALSE, times = 1)
+subset_train_data <- dtTrain[subset_indices, ]
+subset_train_data$TARGET <- as.factor(subset_train_data$TARGET)
+```
+
+
+# Model Building
+
+```{r}
+traincntrl <- trainControl(method = 'repeatedcv',
+                                         number = 5,
+                                         repeats = 2,
+                                         classProbs = TRUE, 
+                                         sampling = "down",
+                                         summaryFunction = twoClassSummary)
+```
+
+
+**Support Vector Machine(SVM Radial)**
+
+```{r warning=FALSE}
+svmFit <- train(TARGET ~.,
+                data = subset_train_data,
+                method = 'svmRadial',
+                preProc = c('center','scale'),
+                tuneLength = 3,
+                trControl = traincntrl)
+
+svmFit
+```
+
+```{r}
+plot(svmFit, scales = list(x=list(log =2)))
+```
+
+```{r include=FALSE}
+predictClasses <- predict(svmFit, dtTest)
+predictProbs <- predict(svmFit, newdata = dtTest, type = "prob")
+```
+
+```{r}
+confusionMatrix(predictClasses, dtTest$TARGET)
+```
+
+In employing the Support Vector Machine (SVM) with a Radial Basis Function Kernel for classification tasks, the model was trained on a dataset comprising 24,601 samples with 15 predictor variables. The SVM utilized preprocessing techniques involving centering and scaling. The tuning parameters, particularly the cost parameter (C) and the radial basis function parameter (sigma), were optimized through cross-validated resampling. The selected model, with C set at 0.25 and sigma at 0.0634, demonstrated a Receiver Operating Characteristic (ROC) of 0.73. Subsequent evaluation on a test set of data (notably imbalanced) yielded a confusion matrix indicating an accuracy of 67%. Sensitivity and specificity were 64.69% and 67.20%, respectively, suggesting a trade-off between correctly identifying positive cases and minimizing false positives. The model's prevalence and detection rates were also assessed, contributing to a comprehensive evaluation of its classification performance.
+
+
+**KNN**
+
+The k-Nearest Neighbors (KNN) algorithm was employed for binary classification, assuming that similar instances exist in close proximity. 
+
+```{r warning=FALSE}
+knnFit <- train(TARGET ~.,
+                data = subset_train_data,
+                method = "knn",
+                preProc = c("center", "scale"),
+                metric = "Accuracy",
+                tuneGrid = data.frame(.k = 1:20),
+                trControl = traincntrl)
+
+knnFit$results
+```
+
+```{r include=FALSE}
+predictions_knn <- predict(knnFit, newdata = dtTest)
+```
+
+```{r}
+conf_matrix <- confusionMatrix(predictions_knn, dtTest$TARGET)
+conf_matrix
+```
+
+The model was trained on a subset of the data with preprocessing steps involving centering and scaling. A range of values for k (number of neighbors) was explored, and the optimal k was determined based on accuracy. The KNN model with the best performance had k=17, achieving an accuracy of 63.2%. The confusion matrix revealed a balanced sensitivity and specificity, indicating a moderate ability to correctly identify both positive and negative cases. The KNN algorithm demonstrated a sensitivity of 63.97%, specificity of 63.14%, and an overall balanced accuracy of 63.55%.
+
+
+**Logistic Regression**
+
+```{r warning=FALSE}
+logisticReg <- train(TARGET ~.,
+                     data = dtTrain,
+                     method = 'glm',
+                     metric="Accuracy",
+                     trControl = traincntrl)
+
+```
+
+```{r warning=FALSE}
+library(pROC)
+predictions <- predict(logisticReg, newdata = dtTest, type = "raw")
+confusionMatrix(predictions, dtTest$TARGET)
+roc_curve <- roc(dtTest$TARGET, as.numeric(predictions == "Yes"))  # Assuming "Yes" is the positive class
+```
+
+```{r}
+plot(roc_curve, main = "ROC Curve for Binary Classification Model", col = "blue")
+```
+
+Logistic Regression was employed for binary classification, offering a balance between speed and accuracy compared to other techniques. The logistic regression model achieved an accuracy of 66.81% on the test dataset. The confusion matrix revealed balanced sensitivity and specificity, indicating a moderate ability to correctly classify both positive and negative instances. The sensitivity was 66.49%, specificity was 66.84%, and the balanced accuracy reached 66.66%. The model's performance is characterized by a Kappa value of 0.1297, suggesting a fair agreement beyond chance. Additionally, the Receiver Operating Characteristic (ROC) curve analysis further assesses the model's ability to discriminate between classes.
+
+# Model Evaluation and Comparison
+
+1. Support Vector Machine (SVM):
+SVM, leveraging a radial basis function kernel, achieved a commendable 67% accuracy on the test dataset.
+Demonstrated a balanced sensitivity (64.69%) and specificity (67.20%).
+Offers a strategic tool for anticipating and streamlining loan approval outcomes.
+The tuned model used sigma = 0.06342473 and C = 0.25.
+
+2. k-Nearest Neighbors (KNN):
+KNN algorithm, considering 20 different k values, achieved a 63.2% accuracy on the test dataset.
+Balanced sensitivity (63.97%) and specificity (63.14%).
+Presents a potential approach for discerning patterns in loan approval outcomes.
+
+3. Logistic Regression:
+Logistic Regression, known for its computational efficiency, achieved an accuracy of 66.81% on the test dataset.
+Balanced sensitivity (66.49%) and specificity (66.84%).
+Strikes a balance between speed and accuracy in comparison to more complex models.
+
+# Conclusion and Recommendations
+
+Each model presents strengths and trade-offs in accuracy and computational efficiency.
+
+SVM, with its 67% accuracy, stands out for robust predictive modeling, though computational intensity should be considered.
+
+KNN, while less accurate, offers an alternative perspective, potentially uncovering unique patterns.
+
+Logistic Regression, with its 66.81% accuracy, is an attractive option due to its balance between speed and accuracy.
+
+Further refinement and exploration of ensemble approaches could enhance predictive power.
+We recommend exploration and refinement to achieve the desired paradigm shift in financial decision-making based on the strengths and trade-offs of each model in accuracy and computational efficiency to achieve an optimal and balanced predictive model that not only minimizes risks associated with loan approvals but also revolutionizes the decision-making landscape for lending institutions, aligning with our overarching goal of transforming financial practices and fostering a more secure and informed lending experience.
+
+Our journey extends beyond data; it's about transforming the landscape of financial decision-making, fostering an enriched lending experience for all stakeholders.

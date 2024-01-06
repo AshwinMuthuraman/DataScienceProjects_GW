@@ -1,0 +1,243 @@
+Project 2
+In the realm of modern finance, the timely repayment of loans is of paramount importance for both lenders and borrowers. The core focus of our project revolves around the predictive analysis of loan approval based on an applicant's repayment history. By leveraging cutting edge data science and machine learning techniques, we aim to create a robust model that can assess an applicant's likelihood of paying their loans on time. This model will enable lending institutions to make more informed decisions regarding loan approvals, thereby reducing risks and enhancing the overall lending experience.
+Our dataset contains 307,511 observations, which means that we have data on over 300,000 loan applicants. Each applicant is represented by 122 different pieces of information, such as their gender, income, education status, and employment status.
+
+
+FOR PRESENTATION - need to focus on why this model and what we learned from this model, only 1 or 2 slides for EDA
+
+EDA
+
+1. imputation > adding data for missing values
+2. we will use Label Encoding for any categorical variables with only 2 categories and OneHot Encoding for any categorical 
+variables with more than 2 categories.
+3. ALigning and testing the data to match the values in train and test after encoding
+4. Anomalies and outlier detection  mistyped numbers, errors in measuring equipment, or they could be valid but extreme measurements.
+5. histogram 
+6. correlation  Pearson correlation coefficient between every variable and the target 
+7. barplot
+8. kdeplot
+9. heatmap of corrleation
+10. As a final exploratory plot, we can make a pairs plot of the EXT_SOURCE variables and the DAYS_BIRTH variable.
+The Pairs Plot is a great exploration tool because it lets us see relationships between multiple pairs of variables 
+as well as distributions of single variables.Graphs in the pair plot > scatter plot, histogram , desnity plot 
+
+11. Feature Engineering   Polynomial features
+				  Domain knowledge features
+MODEL
+
+ logistic regression
+ random forest 
+ making predictions using engineered features
+ testing domain features
+ model interpretation : feature importance
+ light gradient boosting machine
+ Conclusion
+
+
+PPT and Summary paper
+Examining TARGET Column Distribution:
+ Imbalanced data with 91.93% in class 0 and 8.07% in class 1.
+ Potential class weight adjustment needed for sophisticated machine learning models.
+ Addressing missing values in preparation for ML model building.
+
+Checking DataTypes of Columns:
+ Float64: 65 columns
+ Int64: 41 columns
+ Object (Categorical): 16 columns
+
+Encoding Categorical Variables:
+ Two main methods: Label encoding and onehot encoding.
+ Label encoding for binary categorical variables, onehot encoding for others.
+ Potential use of PCA or dimensionality reduction for feature explosion in onehot encoding.
+
+Aligning Training and Testing Data:
+ Ensuring same features in both datasets for consistency.
+ Extracting and aligning target column.
+ Resulting in 307,511 training features and 48,744 testing features after alignment.
+
+Anomalies in Data:
+ Detected anomalies using statistics, focusing on `DAYS_EMPLOYED` column.
+ Found anomalies with a maximum value of about 1,000 years, impacting data distribution.
+ Anomalous clients exhibit a lower rate of default (5.40%) compared to nonanomalous clients (8.66%).
+
+Handling Anomalies:
+ Created a flag column `DAYS_EMPLOYED_ANOM` to identify anomalous values.
+ Replaced anomalous values with NaN and visualized the updated distribution.
+ Ensured consistency between training and testing data by applying changes to both.
+
+Other Columns with DAYS:
+ Checked other columns with DAYS, including `DAYS_REGISTRATION`, `DAYS_ID_PUBLISH`, and `OWN_CAR_AGE`.
+ No obvious outliers detected in these columns.
+
+Important Note:
+ Emphasized the need to apply any data manipulations done on the training data to the testing data for consistency in model building.
+
+Handling Anomalies in Test Data:
+ Applied anomaly handling procedures to the test data for consistency.
+ Identified 9,274 anomalies in the test data, constituting approximately 19.03% of the entries.
+
+
+Correlations:
+ Calculated Pearson correlation coefficients between features and the target variable.
+ Most features showed very weak correlations with the target.
+
+Positive Correlations:
+ Identified features with the most positive correlations with the target.
+   Notable features include `DAYS_EMPLOYED`, `DAYS_BIRTH`, and socioeconomic factors.
+
+Negative Correlations:
+ Listed features with the most negative correlations with the target.
+   Notable features include `EXT_SOURCE_3`, `EXT_SOURCE_2`, and `EXT_SOURCE_1`.
+
+Effect of Age on Repayment:
+ Analyzed the relationship between age (`DAYS_BIRTH`) and loan repayment.
+ Found a negative linear relationship, indicating that older clients tend to repay loans on time more often.
+ Created visualizations to support the analysis, highlighting the distribution of ages and repayment densities.
+
+Average Failure to Repay by Age Group:
+ Grouped ages into bins and calculated the average failure to repay loans for each group.
+ Discovered a clear trend: younger applicants are more likely to fail to repay loans.
+ Provided insights for the bank to consider precautionary measures for younger clients without discrimination.
+
+External Data Sources (EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3):
+ Noted that these features represent normalized scores from external data sources.
+ Identified these features as having the strongest negative correlations with the target variable.
+
+External Data Sources  EXT_SOURCE Variables:
+ Features Examined: EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3, DAYS_BIRTH
+ Correlation Analysis:
+   Negative correlations with the target variable.
+   As EXT_SOURCE values increase, clients are more likely to repay loans.
+   Positive correlation observed between EXT_SOURCE_1 and DAYS_BIRTH.
+ Distribution Visualization:
+   KDE plots depict the relationship between EXT_SOURCE variables and loan repayment.
+   EXT_SOURCE_3 shows the most significant difference in target values.
+   Variables likely useful for machine learning, though the relationship is not very strong.
+
+
+
+Feature Engineering  Polynomial Features:
+ Method: Created polynomial features using EXT_SOURCE variables and DAYS_BIRTH.
+ Degree: Features expanded up to the third degree.
+ Result:
+   Generated 35 new features.
+   Some new variables exhibit stronger correlations with the target than original features.
+   Will be evaluated for model performance improvement.
+
+Domain Knowledge Features:
+ Features Created:
+  1. CREDIT_INCOME_PERCENT: Credit amount as a percentage of client's income.
+  2. ANNUITY_INCOME_PERCENT: Loan annuity as a percentage of client's income.
+  3. CREDIT_TERM: Length of payment in months (annuity divided by credit).
+  4. DAYS_EMPLOYED_PERCENT: Percentage of days employed relative to client's age.
+ Visualization:
+   KDE plots illustrate distribution by target value for each new feature.
+   These features are expected to capture financial insights and may contribute to predicting loan repayment.
+
+Summary:
+ Identified strong correlations in external data sources (EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3) with loan repayment.
+ Applied polynomial feature engineering to capture interactions and higherorder relationships.
+ Introduced domain knowledge features representing financial ratios and employment insights.
+ Visualizations support the relevance of these features in predicting loan repayment.
+ Prepared datasets for model training with new features: polynomial and domain knowledge features added.
+
+
+Model Baseline  Logistic Regression:
+ Naive Baseline:
+   Random guessing would yield an AUC ROC of 0.5.
+   Logistic Regression sets a low initial performance bar.
+ Logistic Regression Implementation:
+   Utilized all features after categorical encoding.
+   Imputed missing values and normalized feature ranges.
+   Set regularization parameter (C) to 0.0001 for reduced overfitting.
+   Model Score: 0.67887
+
+Random Forest Implementation:
+ Random Forest Classifier:
+   Applied Random Forest with 100 trees.
+   Extracted feature importances.
+Model Score: 0.67877
+
+Feature Engineered Model: Polynomial Features:
+ Implementation:
+   Introduced polynomial features with degree 3.
+   Imputed missing values and normalized features.
+   Random Forest Classifier trained on new features.
+   Model Score: 0.60467
+ Observation:
+   Polynomial features did not improve model performance significantly.
+
+Feature Engineered Model: Domain Knowledge Features:
+ Implementation:
+   Introduced domain knowledge features.
+   Imputed missing values and normalized features.
+   Random Forest Classifier trained on new features.
+   Model Score: 0.67996
+ Observation:
+   Limited improvement observed with domain knowledge features.
+
+Model Interpretation: Feature Importances:
+ Feature Importance Analysis:
+   Utilized Random Forest feature importances.
+   Identified significant features influencing predictions.
+   Insightful for potential dimensionality reduction.
+Light Gradient Boosting Machine:
+ Implementation:
+   Used LightGBM for model training and testing.
+   Employed crossvalidation (5 folds).
+ Observation:
+   Model performance and feature importance analysis can further guide model improvement.
+  
+Summary:
+ Established baseline models (Logistic Regression, Random Forest).
+ Explored feature engineering with polynomial and domain knowledge features.
+ Investigated model interpretability using feature importances.
+ Introduced LightGBM for potential enhanced performance.
+ Ongoing model refinement and exploration of advanced techniques.
+
+Light Gradient Boosting Machine (LGBM) Model:
+Model Function:
+Utilized LGBM for training and testing with crossvalidation.
+Parameters: Training features, test features, encoding method, and number of folds.
+Data Preparation:
+Extracted IDs, labels, and features from input data.
+Applied onehot encoding or label encoding based on user choice.
+Model Training:
+Employed LGBMClassifier with specified hyperparameters.
+Trained on each fold of the data with early stopping.
+Recorded feature importances and model predictions.
+Performance Metrics:
+Evaluated model performance using ROC AUC.
+Computed training and validation metrics for each fold and overall.
+Baseline Model Results:
+Training Data Shape: (307511, 239)
+Testing Data Shape: (48744, 239)
+Training Logs:
+Iterations: 200, Train AUC: 0.798723, Valid AUC: 0.755039
+Iterations: 400, Train AUC: 0.82838, Valid AUC: 0.755107
+Baseline Metrics:
+Foldwise and overall ROC AUC scores for training and validation.
+Overall AUC: Train  0.813034, Valid  0.758705
+Baseline Submission Score:
+Score: 0.73469
+Domain Knowledge Feature Model Results:
+Training Data Shape: (307511, 243)
+Testing Data Shape: (48744, 243)
+Training Logs:
+Iterations: 200, Train AUC: 0.804779, Valid AUC: 0.762511
+Iterations: 400, Train AUC: 0.834559, Valid AUC: 0.770511
+Domain Knowledge Metrics:
+Foldwise and overall ROC AUC scores for training and validation.
+Overall AUC: Train  0.817048, Valid  0.766186
+Domain Knowledge Submission Score:
+Score: 0.7544
+Feature Importances:
+Feature importance analysis for both baseline and domain knowledge models.
+Visualization of top features influencing predictions.
+Summary:
+LGBM model applied with crossvalidation for robust evaluation.
+Baseline model established with initial parameters.
+Domain knowledge features introduced for potential improvement.
+Comprehensive metrics and visualizations for model evaluation.
+Ongoing exploration for further model refinement.
+

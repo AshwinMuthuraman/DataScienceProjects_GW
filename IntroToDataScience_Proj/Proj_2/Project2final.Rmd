@@ -1,0 +1,419 @@
+---
+title: "Loan Approval Modeling and Predictive Analytics"
+author: "Rapolu Lakshmi Sreya, Ashwin Muthuraman, Sai Srinivas Lakkoju"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: false
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+---
+```{r init, include=F}
+library(ezids)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(magrittr)
+library(forcats)
+library(stringr)
+library(scales)
+```
+
+```{r setup, include=FALSE}
+# Some of common RMD options (and the defaults) are: 
+# include=T, eval=T, echo=T, results='hide'/'asis'/'markup',..., collapse=F, warning=T, message=T, error=T, cache=T, fig.width=6, fig.height=4, fig.dim=c(6,4) #inches, fig.align='left'/'center','right', 
+knitr::opts_chunk$set(warning = F, message = F)
+# Can globally set option for number display format.
+options(scientific=T, digits = 3) 
+# options(scipen=9, digits = 3) 
+```
+
+```{r}
+app_train <- read.csv('application_train.csv')
+print(dim(app_train))
+head(app_train)
+```
+The training data has 307511 rows i.e. each one a separate loan and 122 features/columns including the TARGET (the label we want to predict).
+
+```{r}
+app_test <- read.csv('application_test.csv')
+print(dim(app_test))
+head(app_test)
+```
+
+The testing data has 48744 rows i.e. each one a separate loan and 121 features/columns which does not include the TARGET column. Testing dataset is considerably smaller than train data.
+
+```{r}
+table(app_train$TARGET)
+
+```
+
+
+```{r}
+app_train$TARGET <- as.integer(app_train$TARGET)
+hist(app_train$TARGET, xlab = 'TARGET', main = 'Histogram of TARGET column')
+```
+The dataset exhibits a significant class imbalance, with approximately 91.93% of the data belonging to one class and merely 8.07% to the other. Specifically, a substantial majority of loans were repaid on time compared to the minority of loans that were not repaid. In more advanced machine learning models, addressing this imbalance can be accomplished by assigning weights to the classes based on their representation in the dataset, ensuring a more reflective learning process
+
+```{r}
+missing_values_summary <- function(data) {
+  missing_count <- colSums(is.na(data))
+  missing_percentage <- round((missing_count / nrow(data)) * 100, 2)
+  missing_df <- data.frame(
+    Column = names(missing_count),
+    Missing_Values = missing_count,
+    Missing_Percentage = missing_percentage
+  )
+  return(missing_df[order(-missing_df$Missing_Percentage), ])
+}
+
+missing_summary <- missing_values_summary(app_train)
+print(missing_summary)
+
+```
+
+
+```{r}
+count_columns_with_nulls <- function(data) {
+  columns_with_nulls <- sum(colSums(is.na(data)) > 0)
+  cat("Number of columns with missing values:", columns_with_nulls, "\n")
+}
+
+# Call the function with your dataframe (e.g., app_train)
+count_columns_with_nulls(app_train)
+```
+Number of columns with missing values: 61 
+
+
+```{r}
+data_types <- sapply(app_train, function(x) class(x))
+data_types_counts <- table(data_types)
+
+# Print the counts of each data type
+print(data_types_counts)
+```
+Character (String): 16 variables
+Integer: 41 variables
+Numeric (Floating-point): 65 variables
+
+```{r}
+object_columns <- sapply(app_train, function(x) is.character(x) | is.factor(x))
+unique_counts <- sapply(app_train[, object_columns], function(x) length(unique(x)))
+
+# Print the counts of unique values in object-type columns
+print(unique_counts)
+```
+
+
+```{r}
+le_count <- 0
+for (col in names(app_train)) {
+  # Check if the column is of type 'character' or 'factor'
+  if (is.character(app_train[[col]]) || is.factor(app_train[[col]])) {
+    # If 2 or fewer unique categories
+    if (length(unique(app_train[[col]])) <= 2) {
+      # Convert to factor and encode the levels
+      app_train[[col]] <- factor(app_train[[col]])
+      app_test[[col]] <- factor(app_test[[col]])
+      
+      # Keep track of how many columns were label encoded
+      le_count <- le_count + 1
+    }
+  }
+}
+
+cat(sprintf("%d columns were label encoded.\n", le_count))
+```
+3 columns are label encoded.
+
+```{r}
+library(caret)
+
+one_hot_encode <- function(data) {
+  # Identify non-numeric and non-integer columns
+  non_numeric_cols <- names(data)[!sapply(data, is.numeric) & !sapply(data, is.integer)]
+  
+  # Exclude non-numeric and non-integer columns from encoding
+  categorical_cols <- setdiff(names(data), non_numeric_cols)
+  
+  # Exclude the "TARGET" column, assuming it's your response variable
+  categorical_cols <- setdiff(categorical_cols, "TARGET")
+  
+  if (length(categorical_cols) == 0) {
+    # No columns found for one-hot encoding
+    return(data)
+  }
+  
+  # Perform one-hot encoding using caret's dummyVars
+  formula_text <- as.formula(paste("~ . + 0"))
+  dummy_formula <- dummyVars(formula_text, data = data[, categorical_cols, drop = FALSE])
+  encoded_data <- predict(dummy_formula, newdata = data[, categorical_cols, drop = FALSE])
+  
+  # Combine original and encoded columns
+  final_data <- cbind(data, encoded_data)
+  
+  return(final_data)
+}
+
+
+app_train <- one_hot_encode(app_train)
+app_test <- one_hot_encode(app_test)
+
+```
+
+```{r}
+
+column_names <- names(app_train)
+sapply(column_names, function(col) {
+  cat(col, class(app_train[[col]]), "\n")
+})
+
+```
+
+
+```{r}
+age_years <- app_train$DAYS_BIRTH / -365
+summary(age_years)
+```
+
+
+```{r}
+summary(app_train$DAYS_EMPLOYED)
+
+```
+
+```{r}
+hist(app_train$DAYS_EMPLOYED,
+     main = 'Days Employment Histogram',
+     xlab = 'Days Employment',
+     ylab = 'Frequency')
+
+```
+
+
+```{r}
+anom <- subset(app_train, DAYS_EMPLOYED == 365243)
+non_anom <- subset(app_train, DAYS_EMPLOYED != 365243)
+
+# Calculate the percentage of loans defaulted for anomalies and non-anomalies
+non_anom_default_rate <- mean(non_anom$TARGET) * 100
+anom_default_rate <- mean(anom$TARGET) * 100
+
+# Count the number of anomalous values in the 'DAYS_EMPLOYED' column
+anom_count <- length(anom$DAYS_EMPLOYED)
+
+# Print the results
+cat(sprintf("The non-anomalies default on %.2f%% of loans\n", non_anom_default_rate))
+cat(sprintf("The anomalies default on %.2f%% of loans\n", anom_default_rate))
+cat(sprintf("There are %d anomalous values in column days of employment\n", anom_count))
+```
+
+
+```{r}
+# Assuming 'app_train' is a dataframe in R containing the columns 'DAYS_EMPLOYED' and 'DAYS_EMPLOYED_ANOM'
+# You can create a new variable 'DAYS_EMPLOYED_ANOM' by checking for anomalous values
+
+app_train$DAYS_EMPLOYED_ANOM <- ifelse(app_train$DAYS_EMPLOYED == 365243, TRUE, FALSE)
+
+# Replace the anomalous values with NA (equivalent to np.nan in Python)
+app_train$DAYS_EMPLOYED[app_train$DAYS_EMPLOYED == 365243] <- NA
+
+# Plot histogram for 'DAYS_EMPLOYED'
+hist(app_train$DAYS_EMPLOYED, main = 'Days Employment Histogram', xlab = 'Days Employment', col = 'skyblue')
+
+
+```
+
+```{r}
+summary(app_train$DAYS_REGISTRATION)
+```
+
+```{r}
+summary(app_train$DAYS_REGISTRATION)
+```
+
+```{r}
+summary(app_train$DAYS_ID_PUBLISH)
+```
+
+```{r}
+summary(app_train$OWN_CAR_AGE)
+
+```
+
+```{r}
+app_test$DAYS_EMPLOYED_ANOM <- ifelse(app_test$DAYS_EMPLOYED == 365243, TRUE, FALSE)
+
+# Replace specific values with NA (equivalent to np.nan in Python)
+app_test$DAYS_EMPLOYED[app_test$DAYS_EMPLOYED == 365243] <- NA
+```
+
+```{r}
+numeric_columns <- sapply(app_train, is.numeric)
+numeric_data <- app_train[, numeric_columns]
+
+# Calculate correlations
+correlations <- cor(numeric_data)[,"TARGET"]
+
+# Sort correlations
+sorted_correlations <- sort(correlations)
+
+# Display most positive correlations
+cat("Most Positive Correlations:\n")
+tail(sorted_correlations, 15)
+
+# Display most negative correlations
+cat("\nMost Negative Correlations:\n")
+head(sorted_correlations, 15)
+```
+
+```{r}
+hist(app_train$DAYS_BIRTH / -365, breaks = 50, col = "skyblue", border = "black",
+     main = "Age of Client", xlab = "Age (years)", ylab = "Count")
+```
+
+```{r}
+library(ggplot2)
+
+# Filter data for loans repaid on time and not repaid on time
+repaid_on_time <- subset(app_train, TARGET == 0)
+not_repaid_on_time <- subset(app_train, TARGET == 1)
+
+# Create KDE plot for loans repaid on time
+ggplot() +
+  geom_density(data = repaid_on_time, aes(x = DAYS_BIRTH / -365), color = "blue", fill = "skyblue", alpha = 0.5) +
+  geom_density(data = not_repaid_on_time, aes(x = DAYS_BIRTH / -365), color = "red", fill = "salmon", alpha = 0.5) +
+  labs(x = "Age (years)", y = "Density", title = "Distribution of Ages") +
+  theme_minimal()
+```
+
+```{r}
+age_data <- app_train[, c("TARGET", "DAYS_BIRTH")]
+
+# Calculating age in years and adding a new column
+age_data$YEARS_BIRTH <- age_data$DAYS_BIRTH / -365  # Assuming negative days represent age
+
+# Binning the age data into intervals
+age_data$YEARS_BINNED <- cut(age_data$YEARS_BIRTH, breaks = c(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70))
+
+# Displaying the first few rows
+head(age_data)
+age_groups <- aggregate(age_data[c("TARGET", "YEARS_BIRTH")], by = list(age_data$YEARS_BINNED), FUN = mean)
+
+# Renaming columns in the resulting dataframe
+colnames(age_groups) <- c("YEARS_BINNED", "TARGET_mean", "YEARS_BIRTH_mean")
+
+# Display the resulting dataframe
+print(age_groups)
+
+barplot(100 * age_groups$TARGET_mean, 
+        names.arg = as.character(age_groups$YEARS_BINNED), 
+        xlab = "Age Group (years)", 
+        ylab = "Failure to Repay (%)",
+        main = "Failure to Repay by Age Group",
+        col = "skyblue",
+        ylim = c(0, max(100 * age_groups$TARGET_mean) + 5))  # Set ylim slightly above the maximum value
+
+# Rotate x-axis labels
+par(las = 2)
+```
+
+```{r}
+
+```
+
+```{r}
+#ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+ # geom_tile(color = "white")+
+#scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1,1), space = "Lab", name="Pearson\nCorrelation") +
+ # labs(title='Correlation Heatmap')+
+ # theme(plot.title = element_text(hjust = .5), axis.text.x = element_text(angle=90),
+ #      axis.title.x=element_blank(),
+ #      axis.title.y=element_blank())+
+ # coord_fixed()+
+ # geom_text(aes(Var2, Var1, label = round(value,2)), color = "black", size = 3)
+
+library(reshape2)
+library(ggplot2)
+
+# Assuming 'cormat' is your correlation matrix
+cormat <- cor(mtcars)  # Replace with your actual data
+
+# Melt the correlation matrix
+melted_cormat <- melt(cormat)
+
+# Plot the heatmap
+ggplot(data = melted_cormat, aes(x = Var1, y = Var2, fill = value)) + 
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1,1), space = "Lab", name = "Pearson\nCorrelation") +
+  labs(title = 'Correlation Heatmap') +
+  theme(plot.title = element_text(hjust = .5), axis.text.x = element_text(angle = 90),
+        axis.title.x = element_blank(), axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(Var2, Var1, label = round(value, 2)), color = "black", size = 3)
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

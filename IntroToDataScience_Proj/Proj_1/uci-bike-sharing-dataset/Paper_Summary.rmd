@@ -1,0 +1,722 @@
+---
+# This is the YAML header/metadata for the document
+title: "Bike Share Chronicles_Unveiling Patterns"
+author's: "1) Lakshmi Sreya Rapolu 2) Ashwin Muthuraman 3) Sai Srinivas Lakkoju "
+# date: "today"
+date: "`r Sys.Date()`" 
+# this style requires installing rmdformats package 
+output:  
+    rmdformats::readthedown:
+      toc_float: true
+      toc_depth: 3
+      number_sections: true
+      code_folding: hide
+      includes:
+        before_body: header.tmphtml
+---
+
+
+
+
+```{r setup, include=FALSE}
+# some of common options (and the defaults) are: 
+# include=T, eval=T, echo=T, results='hide'/'asis'/'markup',..., collapse=F, warning=T, message=T, error=T, cache=T, fig.width=6, fig.height=4, fig.dim=c(6,4) #inches, fig.align='left'/'center','right', 
+ knitr::opts_chunk$set(warning = F, results = "markup", message = F)
+#knitr::opts_chunk$set(warning = F, results = "hide", message = F)
+
+# knitr::opts_chunk$set(include = F)
+# knitr::opts_chunk$set(echo = TRUE)
+options(scientific=T, digits = 3) 
+# options(scipen=9, digits = 3) 
+# ‘scipen’: integer. A penalty to be applied when deciding to print numeric values in fixed or exponential notation.  Positive values bias towards fixed and negative towards scientific notation: fixed notation will be preferred unless it is more than ‘scipen’ digits wider.
+# use scipen=999 to prevent scientific notation at all times
+```
+
+# Introduction
+
+Bike sharing programs are gaining popularity worldwide because they are environmentally friendly and healthy. Cities are developing bike sharing programs to encourage people to ride bicycles.
+
+Riders can rent bikes from manual or automated stations throughout the city for a set period of time. Riders can typically pick up bikes from one location and return them to another designated location.
+
+Bike sharing programs generate a lot of data, such as travel time, start and end locations, and rider demographics. This data can be combined with other sources of information, such as weather,holiday and season, to learn more about how and when people use bike sharing programs.
+
+## Problem Statement
+
+The goal of this case is to perform Exploratory Data Analysis (EDA) on daily bike rental counts, considering environmental and seasonal variables. This EDA aims to understand the historical usage patterns of a bike-sharing program in Washington, D.C., in relation to weather, environmental factors, and other data. We are interested in exploring the relationships between bike rentals and various factors such as season, temperature, and weather conditions. Our objective is to build insights and understanding from the data 
+
+## Data
+
+This dataset consists around 17,000 records, offering comprehensive details about the rental activity of 
+bikes on both an hourly and daily basis throughout the years 2011 and 2012 within the Capital Bikeshare 
+system. Furthermore, it encompasses relevant data concerning the prevailing weather conditions and 
+the specific seasons that characterized this time frame.
+
+## Dataset characteristics
+
+Both hour.csv and day.csv have the following fields, except hr which is not available in day.csv
+
+1. **instant**: A unique identifier for each record in the dataset.
+
+2. **dteday**: The date of the bike rental.
+
+3. **season**: The season in which the bike rental took place (1: spring, 2: summer, 3: fall, 4: winter).
+
+4. **yr**: The year in which the bike rental took place (0: 2011, 1: 2012).
+
+5. **mnth**: The month in which the bike rental took place (1: January to 12: December).
+
+6. **hr**: The hour of the day in which the bike rental took place (0 to 23).
+
+7. **holiday**: Whether the day of the bike rental was a holiday or not (0: Not Holiday, 1: Holiday).
+
+8. **weekday**: The day of the week in which the bike rental took place (0: Sunday to 6: Saturday).
+
+9. **workingday**: Whether the day of the bike rental was a workday or not (0: Not Working day, 1: Working Day).
+
+10. **weathersit**: The weather condition on the day of the bike rental:
+    - 1: Clear, Few clouds, Partly cloudy, Partly cloudy
+    - 2: Mist + Cloudy, Mist + Broken clouds, Mist + Few clouds, Mist
+    - 3: Light Snow, Light Rain + Thunderstorm + Scattered clouds, Light Rain + Scattered clouds
+    - 4: Heavy Rain + Ice Pallets + Thunderstorm + Mist, Snow + Fog.
+
+11. **temp**: The Normalized temperature in Celsius on the day of the bike rental. The values are divided to 41 (max).
+
+12. **atemp**: The Normalized feeling temperature in Celsius on the day of the bike rental. The values are divided to 67 (max).
+
+13. **hum**: The Normalized humidity on the day of the bike rental. The values are divided to 100 (max).
+
+14. **windspeed**: The Normalized wind speed in meters per second on the day of the bike rental. The values are divided to 67 (max).
+
+15. **casual**: The number of casual users who rented bikes on the day of the bike rental.
+
+16. **registered**: The number of registered users who rented bikes on the day of the bike rental.
+
+17. **cnt**: The total number of users who rented bikes on the day of the bike rental (Casual + Registered).
+
+
+## Libraries
+
+```{r init, include=T}
+#Libraries Used
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(gridExtra)
+library(grid)
+
+```
+The purpose of each library we've used
+
+1.`ggplot2`: A creative canvas where data transforms into captivating visual narratives. This library enables the artful crafting of plots, ensuring that data stories are not just seen but felt.
+
+2.`dplyr`: The meticulous editor, refining dataset's with surgical precision. It's the toolkit for data shaping, sorting, and summarizing, ensuring that the narrative emerges with clarity and insight.
+
+3.`scales`: The language specialist, translating raw numerical values into human-readable labels. By providing understandable scales and formats, it bridges the gap between complex data and intuitive comprehension.
+
+4.`gridExtra`: The master curator, orchestrating a symphony of plots into seamless visual arrangements. It allows for effortless juxtaposition, enabling viewers to explore multiple facets of data in one comprehensive view.  
+
+5.`grid`: The architect of aesthetics, providing the structural foundation for visuals. With its precise control over layout and appearance, it ensures that every graph is not just informative but also visually appealing, capturing attention and curiosity.
+
+
+# Data Pre-Processing
+**File Reading**
+```{r, echo=TRUE}
+bike_df <- read.csv("hour.csv")
+dimensions<-dim(bike_df)
+```
+The Dimension of our Data Set are `r {dimensions}`.
+
+**Data Overview**
+```{r}
+head(bike_df, 5)
+
+```
+
+**Data Types**
+```{r}
+sapply(bike_df, class)
+
+```
+
+By meticulously curating the dataset, we unlock the potential for greater clarity and understanding. This involves a deliberate process of renaming each column, ensuring that they echo the essence of the data they represent. Moreover, we transform seemingly rigid numerical attributes such as 'Season,' 'Year,' 'Month,' 'Hour,' 'Holiday,' 'Weekday,' and 'Workingday' into fluid categorical variables. This transformation doesn't merely alter data types; it imbues the dataset with a new found flexibility, enabling a more nuanced exploration of patterns and trends.
+
+In essence, this transformation is akin to polishing a gem, revealing facets and intricacies that might have been overlooked. It elevates the dataset, allowing us to extract richer insights and tell more compelling stories from the numbers.
+
+**Enchancing data**
+
+In our meticulous data refinement process, we embarked on a transformative journey of renaming the columns, breathing new life into our dataset
+
+**Renaming The Columns**
+```{r}
+names(bike_df) <- c('Instant','Date','Season','Year','Month','Hour','Holiday','Weekday','Workingday','Weather_condition','Temperature','Feelslike_temp','Humidity','Windspeed','Casual','Registered','Total_count')
+
+head(bike_df)
+
+```
+
+This transformation ensures that our dataset is not just a collection of numbers and characters but a rich ensemble of meaningful, categorized attributes, setting the stage for in-depth analysis and insights. Each attribute, meticulously redefined, narrates a unique tale, contributing to the vibrant tapestry of our data exploration.
+
+**Converting to Factors**
+```{r}
+categorical_col <- c('Season', 'Year', 'Month', 'Hour', 'Holiday', 'Weekday', 'Workingday', 'Weather_condition')
+bike_df[, categorical_col] <- lapply(bike_df[, categorical_col], factor)
+sapply(bike_df, class)
+
+```
+
+
+**Null Handling**
+```{r}
+
+null_check <- colSums(is.na(bike_df))
+null_check
+```
+
+No missing values were found in our dataset, ensuring its completeness and integrity. This solid foundation allows confident analysis, leaving no room for uncertainty.
+
+
+
+```{r}
+
+
+```
+
+# EDA
+
+In conducting Exploratory Data Analysis (EDA) for the bike sharing dataset, the process began with loading and inspecting the data, gaining an initial understanding of the variables and their formats. An evaluation for missing values and an assessment of data types, including integers, floats, and objects, were conducted to ensure data quality.
+
+
+```{r}
+
+# Create separate box plots for each variable
+box_plot_total_count <- ggplot(bike_df, aes(x = "", y = Total_count, fill = "Total_count")) +
+  geom_boxplot() +
+  labs(x = "", y = "Total Count", fill = "Variable") +
+  theme_minimal()
+
+box_plot_casual <- ggplot(bike_df, aes(x = "", y = Casual, fill = "Casual")) +
+  geom_boxplot() +
+  labs(x = "", y = "Casual", fill = "Variable") +
+  theme_minimal()
+
+box_plot_registered <- ggplot(bike_df, aes(x = "", y = Registered, fill = "Registered")) +
+  geom_boxplot() +
+  labs(x = "", y = "Registered", fill = "Variable") +
+  theme_minimal()
+
+box_plot_temperature <- ggplot(bike_df, aes(x = "", y = Temperature, fill = "Temperature")) +
+  geom_boxplot() +
+  labs(x = "", y = "Temperature", fill = "Variable") +
+  theme_minimal()
+
+box_plot_windspeed <- ggplot(bike_df, aes(x = "", y = Windspeed, fill = "Windspeed")) +
+  geom_boxplot() +
+  labs(x = "", y = "Windspeed", fill = "Variable") +
+  theme_minimal()
+
+box_plot_humidity <- ggplot(bike_df, aes(x = "", y = Humidity, fill = "Humidity")) +
+  geom_boxplot() +
+  labs(x = "", y = "Humidity", fill = "Variable") +
+  theme_minimal()
+
+# Create a grid of box plots
+grid.arrange(box_plot_total_count, box_plot_casual, box_plot_registered, box_plot_temperature, box_plot_windspeed, box_plot_humidity, ncol = 3)
+
+```
+
+Outlier detection techniques, primarily utilizing box plots, were employed to identify outliers. We used histograms, pie charts and scatter plots to identify patterns and relationships between features.
+
+
+For more in-depth analysis, statistical testing methods such as ANOVA was applied to validate hypotheses concerning various variables. Throughout the process, an iterative approach was maintained, allowing for revisits to earlier analyses based on new insights or questions that arose during the exploration.
+
+In conclusion, the EDA process yielded valuable insights into the dataset. Patterns, correlations, and trends were identified, providing a solid foundation for formulating hypotheses for subsequent investigations or modeling endeavors. EDA, being an iterative process, allows for continuous refinement and exploration as new questions and areas of interest emerge
+
+
+**What Are the Year-wise Distribution Patterns of Casual and Registered Bike Sharing Users?**
+```{r}
+filtered_data <- bike_df %>% filter(Year == 0)
+filtered_data1 <- bike_df %>% filter(Year == 1)
+# Calculate the total Casual and Registered counts for the filtered data
+yearly_totals <- filtered_data %>%
+  group_by(Year) %>%
+  summarize(Casual_Total = sum(Casual), Registered_Total = sum(Registered))
+yearly_totals1 <- filtered_data1 %>%
+  group_by(Year) %>%
+  summarize(Casual_Total1 = sum(Casual), Registered_Total1 = sum(Registered))
+# Calculate the percentages for Casual and Registered users
+yearly_totals$Casual_Percentage <- (yearly_totals$Casual_Total / (yearly_totals$Casual_Total + yearly_totals$Registered_Total)) * 100
+yearly_totals$Registered_Percentage <- (yearly_totals$Registered_Total / (yearly_totals$Casual_Total + yearly_totals$Registered_Total)) * 100
+yearly_totals1$Casual_Percentage1 <- (yearly_totals1$Casual_Total1 / (yearly_totals1$Casual_Total1 + yearly_totals1$Registered_Total1)) * 100
+yearly_totals1$Registered_Percentage1 <- (yearly_totals1$Registered_Total1 / (yearly_totals1$Casual_Total1 + yearly_totals1$Registered_Total1)) * 100
+# Colors for the pie chart slices
+pie_colors <- c("lightblue", "lightgreen")
+# Create a pie chart for Year 0
+labels <- c(
+  paste("Casual: ", scales::percent(yearly_totals$Casual_Percentage / 100), sep = ""),
+  paste("Registered: ", scales::percent(yearly_totals$Registered_Percentage / 100), sep = "")
+)
+pie(c(yearly_totals$Casual_Percentage, yearly_totals$Registered_Percentage), labels = labels, col = pie_colors, main = "Year 0: Casual and Registered Users")
+
+labels <- c(
+  paste("Casual: ", scales::percent(yearly_totals1$Casual_Percentage1 / 100), sep = ""),
+  paste("Registered: ", scales::percent(yearly_totals1$Registered_Percentage1 / 100), sep = "")
+)
+pie(c(yearly_totals1$Casual_Percentage1, yearly_totals1$Registered_Percentage1), labels = labels, col = pie_colors, main = "Year 1: Casual and Registered Users")
+```
+
+The EDA process began by segregating data for Year 0 and Year 1, focusing on casual and registered users. Total counts for each category were computed and converted into percentages to extract crucial insights.Using pie charts, these percentages were depicted graphically. In Year 0, casual users constituted 20%, while registered users made up 80% of the total. Similarly, in Year 1, casual users accounted for 18%, while registered users increased to 82%. The pie charts, complemented by clear labels, offer an intuitive snapshot of user distribution patterns, enhancing our understanding of user engagement dynamics across these specified years.
+
+**Year wise distribution of casual vs registered users**
+```{r}
+bar_yearly_totals <- bike_df %>%
+  group_by(Year) %>%
+  summarize(Casual_Total = sum(Casual), Registered_Total = sum(Registered))
+
+# Create a year-wise distribution plot for Casual users with unique year-based colors
+casual_plot <- ggplot(bar_yearly_totals, aes(x = factor(Year), y = Casual_Total, fill = factor(Year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Year-wise Distribution of Casual Users", x = "Year", y = "Casual Count", fill = "Year")
+
+# Customize the y-axis labels to display in standard numeric notation
+casual_plot <- casual_plot + scale_y_continuous(labels = comma)
+
+# Create a year-wise distribution plot for Registered users with unique year-based colors
+registered_plot <- ggplot(bar_yearly_totals, aes(x = factor(Year), y = Registered_Total, fill = factor(Year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Year-wise Distribution of Registered Users", x = "Year", y = "Registered Count", fill = "Year")
+
+# Customize the y-axis labels to display in standard numeric notation
+registered_plot <- registered_plot + scale_y_continuous(labels = comma)
+
+# Display the two plots side by side
+grid.arrange(casual_plot, registered_plot, ncol = 2)
+```
+
+In our data analysis, we observed a considerable surge in user engagement over the specified years. Casual users increased significantly, approximately increasing half from the initial count in Year 0 to a notably higher figure in Year 1. Similarly, registered users also displayed substantial growth, nearly doubling their count from the previous year. This upward trend in both casual and registered users indicates a robust increase in the platform's popularity and usage. The dataset reflects a notable rise in user participation, emphasizing the platform's growing appeal and effectiveness. These findings provide valuable insights into the platform's evolving user dynamics, paving the way for further comprehensive investigations.
+
+**Which Hour of the Day Sees Maximum Bike Rentals?**
+```{r}
+# Hour Of the Day v/s Count
+
+hourly_total_counts <- bike_df %>%
+  group_by(Hour) %>%
+  summarise(total_rental_count = sum(Total_count) / 1000)
+
+ggplot(hourly_total_counts, aes(x = factor(Hour), y = total_rental_count)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  labs(
+    title = "Total Bike Rentals by Hour of the Day",
+    x = "Hour of the Day",
+    y = "Total Rental Count (Thousands)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The analysis of total bike rentals by the hour of the day indicates distinct patterns in user behavior. From 12 AM to 6 AM, there is low activity early in the morning. At 8 AM, rentals surge, highlighting high demand during the morning commute, showcasing a consistent demand for bikes. Between 5 PM and 7 PM, the number of rentals peaks, signifying significant evening activity. These trends align with typical work schedules, emphasizing a higher demand for bike rentals during commuting hours and underscoring the bikes' role as a convenient mode of transport for daily work-related travel. The data also reveals a drop in rentals during non-working hours, further indicating reduced demand during leisure times and non-commuting periods. These insights collectively emphasize the bikes' popularity as a commuting option and underscore their relevance and utility during specific hours of the day.
+
+**What Do Hourly Rental Patterns Reveal for Casual and Registered Bikers?**
+```{r}
+
+hourly_casual_counts <- bike_df %>%
+  group_by(Hour) %>%
+  summarise(casual_count = sum(Casual) / 1000)
+hourly_registered_counts <- bike_df %>%
+  group_by(Hour) %>%
+  summarise(registered_count = sum(Registered) / 1000)
+grid.arrange(
+  ggplot(hourly_casual_counts, aes(x = factor(Hour), y = casual_count)) +
+    geom_bar(stat = "identity", fill = "lightgreen") +
+    labs(
+      title = "Casual Bike Rentals by Hourly",
+      x = "Hour of the Day",
+      y = "Casual Count (Thousands)"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1)),
+  
+  ggplot(hourly_registered_counts, aes(x = factor(Hour), y = registered_count)) +
+    geom_bar(stat = "identity", fill = "orange") +
+    labs(
+      title = "Registered Bike Rentals by Hourly",
+      x = "Hour of the Day",
+      y = "Registered Count (Thousands)"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1)),
+  ncol=2
+)
+
+```
+
+The hourly analysis of bike rentals reveals intriguing user behavior patterns. Casual rentals exhibit a peak in activity between late morning and early evening, particularly between 11:00 AM and 5:00 PM. A gradual increase is observed from 6:00 AM to 11:00 AM, suggesting a steady uptake during the morning hours. However, there is a significant drop in rentals during the early morning hours, indicating a period of low activity for recreational users.
+
+In contrast, registered bike rentals experience a peak in demand at 8:00 AM, precisely during typical work hours. This peak signifies a surge in rentals, primarily driven by commuters. After 5:00 PM, there is a gradual decrease in registered rentals, although the numbers remain higher compared to the early morning period. This consistent demand, even in the later hours, implies a stable user base among registered users, showcasing their reliance on the service throughout the day. These findings underscore the distinct usage patterns between casual and registered users, offering insights for optimizing bike availability and catering to diverse user needs.
+
+**What Are the Bike Rental Patterns for Casual and Registered Users Throughout the Week?**
+```{r}
+
+# Day of the Week v/s Total Casual User Count
+casual_by_weekday <- bike_df %>%
+  group_by(Weekday) %>%
+  summarise(total_casual_count = sum(Casual/1000)) 
+
+# Day of the Week v/s Total Registered User Count
+registered_by_weekday <- bike_df %>%
+  group_by(Weekday) %>%
+  summarise(total_registered_count = sum(Registered/1000))
+
+# Define the order of weekdays for proper sorting in the bar chart
+weekday_order <- c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+# Create the bar charts
+grid.arrange(
+  ggplot(casual_by_weekday, aes(x = factor(Weekday, levels = 0:6), y = total_casual_count)) +
+    geom_bar(stat = "identity", fill = "orange") +
+    labs(
+      title = "Casual User Bike  Counts by Day of the Week",
+      x = "Day of the Week",
+      y = "Total Casual User Count(In Thousands)"
+    ) +
+    scale_x_discrete(labels = weekday_order) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)),
+  
+  ggplot(registered_by_weekday, aes(x = factor(Weekday, levels = 0:6), y = total_registered_count)) +
+    geom_bar(stat = "identity", fill = "lightgreen") +
+    labs(
+      title = "Registered User Bike  Counts by Day of the Week",
+      x = "Day of the Week",
+      y = "Total Registered User Count(In Thousands)"
+    ) +
+    scale_x_discrete(labels = weekday_order) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)), ncol=2)
+
+```
+
+The analysis of bike rentals based on the days of the week offers intriguing insights into user behavior. Casual users demonstrate peak rentals on weekends, particularly on Sundays and Saturdays, indicating a preference for recreational use during leisure periods. Throughout the midweek, their demand remains steady, showing minor fluctuations. However, there's a notable decline in rentals at the beginning and end of the week, showcasing reduced activity during these periods.
+
+In contrast, registered users exhibit a different trend. Their demand peaks midweek, specifically on Thursdays, showcasing a significant reliance on the bike-sharing service during the core workdays. High usage continues from Monday to Wednesday, reflecting consistent demand for daily commuting needs. During the weekends, especially on Sundays and Saturdays, registered user activity drops significantly, emphasizing a reduced dependence on the service during leisure times. These distinct usage patterns shed light on the varying needs of casual and registered users, providing essential insights for service optimization and catering to diverse user demands effectively.
+
+**Are bike rentals influenced by holidays?**
+```{r}
+
+avg_casual_by_holiday <- bike_df %>%
+  group_by(Holiday) %>%
+  summarize(AvgCasual = mean(Casual))
+
+avg_registered_by_holiday <- bike_df %>%
+  group_by(Holiday) %>%
+  summarize(AvgReg = mean(Registered))
+
+grid.arrange(
+# Create a bar plot to compare the average number of casual bike rentals on holidays vs. non-holidays
+
+ggplot(avg_casual_by_holiday, aes(x = factor(Holiday), y = AvgCasual)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  labs(title = "Average Casual Bike Rentals on Holiday vs. Non-Holiday",
+       x = "Casual",
+       y = "Average Casual Rentals") +
+  theme_minimal()+  scale_x_discrete(labels = c("0" = "Non-Holiday", "1" = "Holiday"))
+,
+
+# Create a bar plot to compare the average number of Registered bike rentals on holidays vs. non-holidays
+ggplot(avg_registered_by_holiday, aes(x = factor(Holiday), y = AvgReg)) +
+  geom_bar(stat = "identity", fill = "orange") +
+  labs(title = "Average Registered Bike Rentals on Holiday vs. Non-Holiday",
+       x = "Registered",
+       y = "Average Registered Rentals") +
+  theme_minimal()+  scale_x_discrete(labels = c("0" = "Non-Holiday", "1" = "Holiday"))
+
+, ncol=2)
+
+```
+
+The examination of bike rental trends among registered and casual users provided intriguing insights. For registered users, it was observed that bike rentals were more prevalent on non-holidays compared to holidays. This trend indicates that registered users primarily utilize the bike-sharing service for their daily commuting needs, emphasizing regular work days rather than leisurely pursuits. Conversely, casual users displayed a contrasting behavior, with a higher frequency of bike rentals occurring on holidays as opposed to non-holidays. This pattern suggests that casual users predominantly opt for bike rentals during their free time, particularly on holidays, indicating a preference for recreational activities and exploration during leisure periods. These distinctive usage patterns between registered and casual users on holidays versus non-holidays underscore the diverse motivations and habits within the user base, providing information for service enhancements and targeted marketing strategies.
+
+**How Does Bike Rental Behavior Differ on Working Days and Non-Working Days?**
+```{r}
+
+# Working Day For Casual Vs Registered
+
+# Calculate the average number of casual bike rentals on working days and non-working days
+avg_casual_by_workingday <- bike_df %>%
+  group_by(Workingday) %>%
+  summarize(AvgCasual = mean(Casual))
+
+# Calculate the average number of registered bike rentals on working days and non-working days
+avg_registered_by_workingday <- bike_df %>%
+  group_by(Workingday) %>%
+  summarize(AvgReg = mean(Registered))
+
+# Create a side-by-side bar plot for casual and registered rentals on working days vs. non-working days
+grid.arrange(
+  # Create a bar plot for casual rentals
+  ggplot(avg_casual_by_workingday, aes(x = factor(Workingday), y = AvgCasual)) +
+    geom_bar(stat = "identity", fill = "lightblue") +
+    labs(title = "Average Casual Bike Rentals on Working Day vs. Non-Working Day",
+         x = "Casual",
+         y = "Average Casual Rentals") +
+    theme_minimal() + scale_x_discrete(labels = c("0" = "Non-Working Day", "1" = "Working Day")),
+  
+  # Create a bar plot for registered rentals
+  ggplot(avg_registered_by_workingday, aes(x = factor(Workingday), y = AvgReg)) +
+    geom_bar(stat = "identity", fill = "orange") +
+    labs(title = "Average Registered Bike Rentals on Working Day vs. Non-Working Day",
+         x = "Registered",
+         y = "Average Registered Rentals") +
+    theme_minimal() + scale_x_discrete(labels = c("0" = "Non-Working Day", "1" = "Working Day")),
+  ncol = 2
+)
+```
+
+The analysis delved into the bike rental trends concerning working days and non-working days for both casual and registered users.
+
+Casual Bike Rentals: The data revealed a clear pattern - casual bike rentals surged on non-working days, indicating higher recreational usage during weekends or holidays. In contrast, rentals dipped on working days, suggesting a decrease in casual biking, likely due to work commitments.
+Registered Bike Rentals: For registered users, the trend was different. Rentals remained consistently high on working days, emphasizing their reliance on bike rentals for commuting purposes. On non-working days, there was a noticeable decrease, indicating reduced demand compared to the workweek.
+
+**Monthly Bike Rental Patterns**
+```{r}
+
+#Month-Wise
+
+ggplot(bike_df, aes(x = factor(Month), y = Total_count/1000, fill = factor(Weekday))) +
+  geom_col() +
+  theme_bw() +
+  labs(
+    x = 'Month',
+    y = 'Total Count(Thousands)',
+    title = 'Month-wise Weekly Total Rental Distribution of Counts'
+  )
+
+```
+
+The analysis of monthly bike rentals revealed varying levels of demand throughout the year. High-demand months, including May, June, July, and August, consistently recorded substantial rental counts, indicating peak user engagement. Months like March, April, September, and October experienced moderate demand, suggesting stable user activity. Conversely, January, February, November, and December were low-demand months, marked by fewer rentals. These findings provide insights into seasonal trends, forming the foundation for further exploration into the reasons behind these patterns. Understanding these dynamics is pivotal for strategic resource allocation and service optimization.
+
+**Which Months Stand Out for Casual and Registered Bike Sharing Users?**
+```{r}
+
+#Month-wise
+grid.arrange(
+  ggplot(bike_df, aes(x = factor(Month, labels = month.abb), y = Casual)) +
+    geom_bar(stat = "identity", fill = "skyblue") +
+    labs(
+      x = "Month",
+      y = "Casual Count",
+      title = "Month-wise Casual User Bike Sharing "
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)),
+  
+  ggplot(bike_df, aes(x = factor(Month, labels = month.abb), y = Registered/1000)) +
+    geom_bar(stat = "identity", fill = "orange") +
+    labs(
+      x = "Month",
+      y = "Registered Count(in thousands)",
+      title = "Month-wise Registered User Bike Sharing "
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)),
+  ncol=2
+)
+
+```
+
+The monthly analysis of bike sharing patterns uncovered crucial trends for both casual and registered users. For casual users, there was a notable uptick in bike rentals from March to July, indicating heightened demand during the warmer months. During summer (June to August), casual users exhibited consistent usage, highlighting their preference for outdoor activities. However, as the year progressed, there was a decline in rentals, especially in the colder months of November and December, suggesting reduced outdoor activities during winter.
+
+On the other hand, registered users displayed a different trend. Their bike rentals steadily increased from January to June, indicating a gradual rise in demand during the first half of the year. The peak in registered user rentals coincided with the summer months (June to August), showcasing a consistent preference for bike commuting even in hot weather. Although there was a slight decrease in rentals in the latter half of the year, registered users maintained a stable level of bike usage, emphasizing their year-round engagement with the bike-sharing service.
+
+These findings provide insights into user behavior, allowing service providers to anticipate seasonal fluctuations in demand and tailor their offerings accordingly. By understanding these patterns, bike-sharing companies can optimize their resources, marketing efforts, and user experiences to better serve both casual and registered users throughout the year.
+
+**Which Season Witnesses the Highest Bike Rentals: Spring, Summer, Fall, or Winter?**
+```{r}
+
+#Season-Wise
+
+bike_df$Season <- factor(bike_df$Season, levels = c(1, 2, 3, 4), labels = c("spring", "summer", "fall", "winter"))
+
+# Create the bar plot
+ggplot(bike_df, aes(x = Season, y = Total_count/1000, fill = Season)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(
+    x = "Season",
+    y = "Count(In thousands)",
+    title = "Counts of Bike Rentals by Season"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("spring" = "brown", "summer" = "red", "fall" = "orange", "winter" = "skyblue"))
+
+```
+
+The identified patterns in seasonal bike rentals hold significant implications for rental companies. Recognizing the fluctuating demand across seasons enables these companies to strategically align their services with user preferences and weather conditions. During spring, companies can focus on promotional campaigns to boost rentals, compensating for the lower demand. As summer arrives, they can scale up their resources, anticipating the substantial increase in rentals driven by warm weather and outdoor activities.
+
+In the fall, maintaining a consistent service while monitoring demand allows companies to capitalize on the pleasant weather, ensuring user satisfaction. During winter, companies might consider implementing special incentives or indoor biking options to counter the decreased appeal of outdoor biking in colder temperatures. Adapting their offerings based on these seasonal insights not only optimizes resource allocation but also enhances customer experience, fostering loyalty and trust among users. This strategic approach ultimately strengthens the competitiveness and sustainability of bike rental companies in the dynamic market landscape.
+
+**How Do Weather Conditions Affect Bike Rentals?**
+```{r}
+# Weather
+
+weather_names <- c("Clear, Few clouds", "Mist + Cloudy", "Light Snow, Light Rain", "Heavy Rain + Ice Pallets")
+
+# Create a bar plot with weather condition names
+ggplot(bike_df, aes(x = factor(Weather_condition, labels = weather_names), y = Total_count, fill = factor(Season))) +
+  geom_col() +
+  theme_bw() +
+  labs(
+    x = 'Weather Condition',
+    y = 'Total Count',
+    title = 'Weather Condition Distribution of Counts'
+  )
+
+```
+
+The analysis of bike rentals concerning weather conditions provides essential insights for rental companies to optimize their services. Clear or partially cloudy weather conditions drive peak rental activity, indicating the preference of users for biking during favorable weather. During such periods, rental companies can focus on enhancing user experience and promoting outdoor activities, anticipating a surge in rentals. Clear, few clouds weather see's high rentals due to its favorable conditions for biking.
+
+Conversely, misty or light rainy conditions slightly reduce rental activity, leading to moderate rentals, potentially attributed to reduced visibility. In response, rental companies can offer special promotions or discounts to maintain user engagement and encourage rentals during these weather conditions. Light snow or rain results in low rentals due to light precipitation.
+
+However, severe weather conditions, such as heavy rain or icy weather, significantly deter biking, leading to a sharp decline in rentals. During such adverse conditions, rental services should prioritize user safety, potentially offering indoor biking alternatives or temporary suspensions. Heavy rain and ice pellets weather conditions result in no rentals due to extreme weather, making biking unsafe and undesirable for users. By adapting their strategies based on these weather insights, rental companies can ensure user satisfaction, promote a safe biking experience, and foster customer loyalty, thereby enhancing their overall brand reputation and market competitiveness.
+
+**Does Temperature Influence Bike Rental Patterns?**
+```{r}
+
+ggplot(bike_df, aes(x = Temperature, y = Total_count, color = Season)) +
+  geom_point() +
+  labs(
+    x = "Temperature",
+    y = "Count of all Bikes Rented",
+    title = "Count vs. Temperature"
+  ) +
+  theme_minimal()
+
+```
+
+The findings on the relationship between bike rentals and temperature have significant implications for rental companies. Recognizing weather's direct impact on user behavior, companies can target marketing campaigns during moderate temperatures to boost customer engagement and rental revenues. Understanding the drop in rentals during extreme weather allows for innovative offerings, such as weather-specific rental plans or special biking events, enhancing user experiences. By aligning services with weather patterns, rental companies can attract and retain customers, ensuring biking remains accessible and enjoyable, fostering loyalty, and contributing to long-term success.
+
+**Does Humidity Affect Bike Rentals?**
+```{r}
+
+ggplot(bike_df, aes(x = Humidity, y = Total_count, color = Season)) +
+  geom_point() +
+  labs(
+    x = "Humidity",
+    y = "Count of all Bikes Rented",
+    title = "Count vs. Humidity"
+  ) +
+  theme_minimal()
+
+```
+
+Examining bike rentals in relation to humidity levels reveals valuable insights for rental companies. Optimal rental activity is observed during periods of moderate humidity, indicating a favorable environment for biking enthusiasts. Conversely, during times of extreme humidity, rental demand dwindles, reflecting a decline in customer interest. This data emphasizes the influence of humidity on customer preferences and can guide rental companies in adjusting their services based on weather conditions. 
+
+**Wind Speed vs. Bike Rentals: Any Connection?**
+```{r}
+
+ggplot(bike_df, aes(x = Windspeed, y = Total_count, color = Season)) +
+  geom_point() +
+  labs(
+    x = "Windspeed",
+    y = "Count of all Bikes Rented",
+    title = "Count vs. Windspeed"
+  ) +
+  theme_minimal()
+
+```
+
+Analyzing bike rental trends in relation to wind speed provides valuable insights into customer behavior. The data shows that rental counts remain relatively stable under calm to moderate wind conditions, indicating customers' willingness to rent bikes even with moderate fluctuations in wind speed. However, there is a noticeable decrease in rentals during high wind speeds, suggesting that extreme winds do impact rental patterns. Rental companies can utilize this information to anticipate fluctuations in demand based on wind conditions. By adjusting their bike availability and marketing strategies during windy days, they can ensure providing a seamless experience to customers while optimizing operational costs. This adaptability not only enhances customer satisfaction but also promotes the company's reputation for reliability and customer-oriented service, fostering long-term customer loyalty and sustained profitability.
+
+
+Post-Exploratory Data Analysis (EDA) : Our research questions underwent a notable refinement. The initial inquiry, "How does weather affect bike sharing usage?" was broad and lacked specificity. However, EDA empowered us to investigate the influence of specific weather conditions on weekly bike rental patterns and the impact of seasonality on usage trends, thus enhancing our understanding of weather's role in usage patterns.
+
+In the context of user-type analysis, EDA drove more sophisticated feature selection. This led to inquiries concerning hourly, weekly, and monthly trends for user types, especially during special holidays. EDA facilitated the formulation of data-driven and detailed research questions, enabling us to unearth profound insights into user behavior and factors affecting bike sharing patterns. In the professional project context, EDA elevated our research to a more advanced level, unlocking the dataset's full potential and yielding richer, more meaningful outcomes.
+
+
+# Tests
+
+```{r}
+#Effect of Holiday On Casual Users
+casual_holiday = aov(Casual ~ Holiday, data = bike_df)
+casual__holidaysummary = summary(casual_holiday)
+casual__holidaysummary
+```
+
+From the ANOVA above analysis with the "Holiday" variable revealed a highly significant effect. There are statistically significant differences in the response variable between holidays and non-holidays, as indicated by the low p-value (3.2e-05) and the F-value of 17.3. This suggests that the "Holiday" variable has a substantial impact on the response variable(Casual Users).
+
+```{r}
+#Effect of Working Day on Registered Users
+Registered_workingday = aov(Registered ~ Workingday, data = bike_df)
+Registered_workingdaysummary = summary(Registered_workingday)
+Registered_workingdaysummary
+```
+
+From the above ANOVA analysis involving the "Workingday" variable indicates a highly significant effect. There are substantial and statistically significant differences in the response variable between working days and non-working days, as evident from the very low p-value (<2e-16) and a substantial F-value of 319. These results suggest that the "Workingday" variable significantly impacts the response variable(Registered Users).
+
+```{r}
+#Effect of Weather on Total Count
+Weatheranova_result <- aov(Total_count ~ Weather_condition, data = bike_df)
+Weatheranova_resultsummary =summary(Weatheranova_result)
+Weatheranova_resultsummary
+
+```
+
+The ANOVA analysis for the "Weather_condition" variable indicates a highly significant effect. There are substantial and statistically significant differences in the response variable, "Total_count," between the different weather conditions. This is evident from the very low p-value (<2e-16) and a substantial F-value of 127. These results suggest that the "Weather_condition" variable significantly impacts the "Total_count" of bike rentals.
+
+```{r}
+#Hour Vs Casual Count
+
+bike_df$Hour <- as.numeric(as.character(bike_df$Hour))
+#Because 'Estimated effects may be unbalanced'
+# Create a new variable to group hours
+bike_df <- bike_df %>%
+  mutate(TimeOfDay = case_when(
+    Hour >= 6 & Hour < 12 ~ "Morning",
+    Hour >= 12 & Hour < 18 ~ "Afternoon",
+    TRUE ~ "Evening"
+  ))
+time_of_day_anova <- aov(Casual ~ TimeOfDay, data = bike_df)
+time_of_day_summary <- summary(time_of_day_anova)
+time_of_day_summary
+```
+
+The above ANOVA analysis involving the "TimeOfDay" variable reveals a highly significant effect. There are substantial and statistically significant differences in the response variable across different times of the day. The very low p-value (<2e-16) and a substantial F-value of 2174 indicate that the "TimeOfDay" variable significantly impacts the response variable(Casual User Count).
+
+```{r}
+time_of_day_anova_R <- aov(Registered ~ TimeOfDay, data = bike_df)
+time_of_day_summary_R <- summary(time_of_day_anova_R)
+time_of_day_summary_R
+```
+
+The above ANOVA analysis involving the "TimeOfDay" variable reveals a highly significant effect. There are substantial and statistically significant differences in the response variable across different times of the day. The very low p-value (<2e-16) and a substantial F-value of 1047 indicate that the "TimeOfDay" variable significantly impacts the response variable(Registered User Count)
+
+```{r}
+#Day Of the week Vs Casual
+day_of_the_week_anova_c <- aov(Casual ~ Weekday, data = bike_df)
+day_of_the_week_summary_C <- summary(day_of_the_week_anova_c)
+day_of_the_week_summary_C
+```
+
+The ANOVA analysis involving the "Weekday" variable demonstrates a highly significant effect. There are substantial and statistically significant differences in the response variable across different days of the week. The very low p-value (<2e-16) and a substantial F-value of 294 indicate that the "Weekday" variable significantly impacts the response variable(Casual User count).
+
+```{r}
+#Day Of the week Vs Registered
+
+day_of_the_week_anova_r <- aov(Registered ~ Weekday, data = bike_df)
+day_of_the_week_summary_r <- summary(day_of_the_week_anova_r)
+day_of_the_week_summary_r
+```
+
+The ANOVA analysis for the "Weekday" variable indicates a highly significant effect on the response variable. There are substantial and statistically significant differences in the response variable across different days of the week. The very low p-value (<2e-16) and a substantial F-value of 46.1 suggest that the "Weekday" variable significantly impacts the response variable(Registered User Count).
+
+
+# Conclusion
+
+During peak hours, registered users prefer commuting during work rush hours, while casual users opt for late mornings to early evenings, indicating leisurely use. Registered users predominantly rent bikes on weekdays due to work commitments, whereas casual users are more active on holidays and weekends, using bikes for recreational purposes.
+
+Seasonally, bike rentals peak during warm months like summer and fall, dropping during colder seasons like spring and winter. Weather significantly influences rentals; clear and warm conditions boost usage, while rainy or snowy weather decreases bike rentals due to inconvenience. Temperature impacts user behavior, with moderate temperatures favoring rentals. Lower wind speeds correspond to higher rental rates, suggesting users prefer biking in calm conditions. Additionally, moderate humidity levels positively influence bike rentals. These insights highlight the complex interplay between user behavior and environmental factors, valuable for bike-sharing companies to optimize their services.
+
+# References
+
+Smith, J. (2021). Sustainable Urban Transportation: A Case Study of Bike Sharing in New York City. University of Transportation Studies.
+
+Capital Bikeshare website: Capital Bikeshare. (2023). Retrieved October 24, 2023, from https://www.capitalbikeshare.com/
+

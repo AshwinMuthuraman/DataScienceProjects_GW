@@ -1,0 +1,119 @@
+---
+title: "HW 8: Linear Models with Categorical Regressors"
+author: "Project 2 "
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: false
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+---
+
+```{r init, include=F}
+library(ezids)
+library(data.table)
+library(dplyr)
+```
+
+
+
+```{r setup, include=FALSE}
+# Some of common RMD options (and the defaults) are: 
+# include=T, eval=T, echo=T, results='hide'/'asis'/'markup',..., collapse=F, warning=T, message=T, error=T, cache=T, fig.width=6, fig.height=4, fig.dim=c(6,4) #inches, fig.align='left'/'center','right', 
+knitr::opts_chunk$set(warning = F, message = F)
+# Can globally set option for number display format.
+options(scientific=T, digits = 3) 
+# options(scipen=9, digits = 3) 
+```
+
+```{r}
+train <- fread("application_train.csv", na.strings = c("NA", "NaN", "?", "", "XNA"))
+test <- fread("application_test.csv", na.strings = c("NA", "NaN", "?", "", "XNA"))
+dt1 <- fread("application_train.csv")
+app <- read.csv("application_train.csv") %>% mutate(TARGET=as.factor(TARGET))
+```
+
+```{r}
+cat("application_train : (" , nrow(train) , "," , ncol(train) , ")\n")
+cat("application_test : (" , nrow(test) , "," , ncol(test) , ")")
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+```{r}
+
+```
+
+
+```{r}
+
+```
